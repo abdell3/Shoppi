@@ -1,0 +1,43 @@
+{
+  "name": "shoppi",
+  "version": "1.0.0",
+  "description": "Plateforme E-commerce Shoppi - Structure Monorepo",
+  "private": true,
+  "main": "index.js",
+  "author": "Abdellah ABDELL",
+  "workspaces": [
+    "apps/*",
+    "libs/*"
+  ],
+  "scripts": {
+    "backend:dev": "npm run start:dev -w backend",
+    "backend:build": "npm run build -w backend",
+    "backend:test": "npm run test -w backend",
+    "frontend:dev": "npm run dev -w frontend",
+    "docker:up": "docker-compose -f docker/docker-compose.yml up -d",
+    "docker:down": "docker-compose -f docker/docker-compose.yml down",
+    "prisma:generate": "npm run prisma:generate -w backend",
+    "prisma:migrate": "npm run prisma:migrate -w backend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdell3/Shoppi.git"
+  },
+  "keywords": [
+    "nestjs",
+    "monorepo",
+    "typescript",
+    "prisma",
+    "ecommerce"
+  ],
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/abdell3/Shoppi/issues"
+  },
+  "homepage": "https://github.com/abdell3/Shoppi#readme",
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
