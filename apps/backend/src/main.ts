@@ -15,7 +15,7 @@ async function bootstrap() {
     res.json({ status: 'ok', uptime: process.uptime() });
   });
 
-  // Gestionnaire d'erreurs global
+  // Gestionnaire d'erreurs global 
   app.use(globalErrorHandler);
 
   app.listen(env.PORT, () => {
