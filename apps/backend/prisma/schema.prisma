@@ -1,0 +1,88 @@
+datasource db {
+  provider = "postgresql" 
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+  MANAGER
+}
+
+
+model User {
+  id        String   @id @default(uuid())
+  firstName String
+  lastName  String
+  email     String   @unique
+  password  String
+  phone     String?
+  address   String?
+  role      UserRole @default(CLIENT)
+  orders    Order[]
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  totalAmount Float
+  status      String      @default("PENDING")
+  createdAt   DateTime    @default(now())
+  
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  items       OrderItem[]
+}
+
+model OrderItem {
+  id              String  @id @default(uuid())
+  quantity        Int
+  priceAtPurchase Float
+  
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id])
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+}
+
+// module catalog
+
+model Product {
+  id          String      @id @default(uuid())
+  name        String
+  description String      @db.Text
+  price       Float
+  sku         String      @unique
+  isHidden    Boolean     @default(false)
+  
+  categoryId  String
+  category    Category    @relation(fields: [categoryId], references: [id])
+  inventory   Inventory?
+  tags        Tag[]       
+  orderItems  OrderItem[]
+}
+
+model Inventory {
+  id                String  @id @default(uuid())
+  availableQuantity Int     @default(0)
+  reservedQuantity  Int     @default(0)
+  
+  productSku        String  @unique
+  product           Product @relation(fields: [productSku], references: [sku])
+}
+
+model Category {
+  id       String    @id @default(uuid())
+  name     String
+  slug     String    @unique
+  products Product[]
+}
+
+model Tag {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  products    Product[]
+}
