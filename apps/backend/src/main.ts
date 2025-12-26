@@ -1,30 +1,33 @@
-import "reflect-metadata";
-import express from 'express';
-import cors from 'cors';
-import { env } from './config/env';
-import { logger } from './common/utils/logger';
-import { globalErrorHandler } from './core/filters/error.filter';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { WinstonModule } from 'nest-winston';
+import * as winston from 'winston';
+import { ValidationPipe } from '@nestjs/common';
+import { AllExceptionsFilter } from './core/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = express();
-  app.use(express.json());
-  app.use(cors());
-
-  // Healthcheck
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() });
+  const instance = WinstonModule.createLogger({
+    transports: [
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.timestamp(),
+          winston.format.colorize(),
+          winston.format.printf(({ timestamp, level, message }) => {
+            return `${timestamp} [${level}]: ${message}`;
+          }),
+        ),
+      }),
+    ],
   });
 
-  // Gestionnaire d'erreurs global 
-  app.use(globalErrorHandler);
+  const app = await NestFactory.create(AppModule, { logger: instance });
+  app.useGlobalFilters(new AllExceptionsFilter());
 
-  app.listen(env.PORT, () => {
-    logger.info(`🚀 Shoppi Backend tournant sur http://localhost:${env.PORT}`);
-  });
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+
+  const port = process.env.PORT || 3003;
+  await app.listen(port);
+  console.log(`🚀 Application YouShop tournant sur : http://localhost:${port}/api`);
 }
-
-bootstrap().catch((err) => {
-  logger.error("Échec du démarrage du serveur");
-  logger.error(err);
-  process.exit(1);
-});
+bootstrap();
