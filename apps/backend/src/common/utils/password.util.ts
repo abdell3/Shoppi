@@ -11,4 +11,4 @@ export async function hashPassword(plainPassword: string): Promise<string> {
 
 export async function comparePasswords(plainPassword: string, hashedPassword: string): Promise<boolean> {
     return bycrypt.compare(plainPassword, hashedPassword);
-}
+} 
