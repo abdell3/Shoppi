@@ -21,7 +21,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getResponse() 
         : 'Internal server error';
 
-    // Log de l'erreur via Winston (configuré dans main.ts)
     this.logger.error(
       `Http Status: ${status} Error: ${JSON.stringify(message)} Path: ${request.url}`,
     );
