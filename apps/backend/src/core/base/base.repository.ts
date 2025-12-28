@@ -9,32 +9,25 @@ type PrismaDelegate<T, C, U> = {
 };
 
 export abstract class BaseRepository<T, C, U> implements IBaseRepository<T, C, U> {
-  constructor(protected readonly dbModel: PrismaDelegate<T, C, U>) {}
+  constructor(protected readonly model: PrismaDelegate<T, C, U>) {}
 
   async findAll(): Promise<T[]> {
-    return this.dbModel.findMany();
+    return this.model.findMany();
   }
 
   async findById(id: string): Promise<T | null> {
-    return this.dbModel.findUnique({
-      where: { id },
-    });
+    return this.model.findUnique({ where: { id } });
   }
 
   async create(data: C): Promise<T> {
-    return this.dbModel.create({ data });
+    return this.model.create({ data });
   }
 
   async update(id: string, data: U): Promise<T> {
-    return this.dbModel.update({
-      where: { id },
-      data,
-    });
+    return this.model.update({ where: { id }, data });
   }
 
   async delete(id: string): Promise<T> {
-    return this.dbModel.delete({
-      where: { id },
-    });
+    return this.model.delete({ where: { id } });
   }
 }

@@ -1,30 +1,37 @@
-import "reflect-metadata";
-import express from 'express';
-import cors from 'cors';
-import { env } from './config/env';
-import { logger } from './common/utils/logger';
-import { globalErrorHandler } from './core/filters/error.filter';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import helmet from 'helmet';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { AllExceptionsFilter } from './core/filters/http-exception.filter';
 
 async function bootstrap() {
-  const app = express();
-  app.use(express.json());
-  app.use(cors());
+  const app = await NestFactory.create(AppModule);
+  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+  
+  app.use(helmet());
+  app.enableCors(); 
+  app.useGlobalFilters(new AllExceptionsFilter());
+  app.setGlobalPrefix('api');
+  
+  app.useGlobalPipes(new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  }));
 
-  // Healthcheck
-  app.get('/health', (req, res) => {
-    res.json({ status: 'ok', uptime: process.uptime() });
-  });
+  const config = new DocumentBuilder()
+    .setTitle('Shoppi API')
+    .setDescription('Documentation de l\'API E-commerce YouShop')
+    .setVersion('1.0')
+    .addBearerAuth()
+    .build();
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api/docs', app, document);
 
-  // Gestionnaire d'erreurs global 
-  app.use(globalErrorHandler);
-
-  app.listen(env.PORT, () => {
-    logger.info(`🚀 Shoppi Backend tournant sur http://localhost:${env.PORT}`);
-  });
+  await app.listen(3000);
+  Logger.log(`🚀 Application is running on: http://localhost:3000/api`);
+  Logger.log(`📑 Swagger is running on: http://localhost:3000/api/docs`);
 }
-
-bootstrap().catch((err) => {
-  logger.error("Échec du démarrage du serveur");
-  logger.error(err);
-  process.exit(1);
-});
+bootstrap();
