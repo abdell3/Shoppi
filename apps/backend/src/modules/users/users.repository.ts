@@ -4,7 +4,7 @@ import { BaseRepository } from '../../core/base/base.repository';
 import { User, Prisma } from '@prisma/client';
 
 @Injectable()
-export class UserRepository extends BaseRepository <User, Prisma.UserCreateInput, Prisma.UserUpdateInput> {
+export class UsersRepository extends BaseRepository <User, Prisma.UserCreateInput, Prisma.UserUpdateInput> {
     constructor(private readonly prisma: PrismaService) {
         super(prisma.user);
     }
