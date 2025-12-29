@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { RolesGuard } from './guards/roles.guard';
 
 import { AuthService } from './auth.service';
 import { UsersRepository } from '../users/users.repository';
@@ -20,12 +21,14 @@ import { env } from '../../config/env';
         AuthService, 
         UsersRepository,
         JwtStrategy,
-        JwtAuthGuard
+        JwtAuthGuard,
+        RolesGuard
     ],
     exports: [
         AuthService, 
         JwtModule,
-        JwtAuthGuard
+        JwtAuthGuard,
+        RolesGuard
     ], 
 })
 
