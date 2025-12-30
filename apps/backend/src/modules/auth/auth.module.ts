@@ -7,6 +7,7 @@ import { RolesGuard } from './guards/roles.guard';
 import { AuthService } from './auth.service';
 import { UsersRepository } from '../users/users.repository';
 import { JwtStrategy } from './strategies/jwt.strategy';
+import { AuthController } from './auth.controller';
 import { env } from '../../config/env';
 
 @Module({
@@ -17,6 +18,7 @@ import { env } from '../../config/env';
             signOptions: { expiresIn: '24h'}
         }),
     ],
+    controllers: [AuthController],
     providers: [
         AuthService, 
         UsersRepository,
