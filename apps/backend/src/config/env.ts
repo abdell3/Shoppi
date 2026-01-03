@@ -1,13 +1,15 @@
 import { z } from 'zod';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).default(3003),
-  DATABASE_URL: z.string().url(),
-  JWT_SECRET: z.string().min(16, "Le JWT_SECRET doit faire au moins 16 caractères"),
+  NODE_ENV: z.string().optional(),
+  DATABASE_URL: z.string(),
+  JWT_SECRET: z.string(),
+  JWT_EXPIRES_IN: z.string().optional(),
+  BCRYPT_SALT_ROUND: z.coerce.number(),
 });
 
-export const env = envSchema.parse(process.env);
+export type EnvVars = z.infer<typeof envSchema>;
+
+export function validateEnv() {
+  return envSchema.parse(process.env);
+}
