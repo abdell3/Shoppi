@@ -1,38 +1,72 @@
-import * as dotenv from 'dotenv';
-dotenv.config({ path: '.env.test' });
-
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { execSync } from 'child_process';
+import { resolve } from 'path';
 import { AppModule } from '../../../app.module';
+import { PrismaService } from '../../../database/prisma.service';
 
-
-// Bootstrap de l'application : 
 describe('AuthModule (e2e)', () => {
   let app: INestApplication;
   let server: any;
   let accessToken: string;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
+    try {
+      console.log('🔄 Running Prisma migrations...');
+      execSync('npx prisma migrate deploy', {
+        cwd: resolve(__dirname, '../../../../'),
+        env: { ...process.env },
+        stdio: 'inherit',
+      });
+      console.log('✅ Prisma migrations applied');
+    } catch (error) {
+      console.error('❌ Failed to run Prisma migrations:', error);
+      throw error;
+    }
+
     const moduleFixture: TestingModule =
       await Test.createTestingModule({
         imports: [AppModule],
       }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api');
+
+    prisma = moduleFixture.get<PrismaService>(PrismaService);
+    try {
+      await prisma.$connect();
+      console.log('✅ Database connected to:', process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@'));
+    } catch (error) {
+      console.error('❌ Database connection failed');
+      console.error('DATABASE_URL:', process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@'));
+      console.error('Error:', error);
+      throw new Error(`Cannot connect to test database at ${process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@')}. Make sure Docker PostgreSQL is running (docker-compose up -d postgres) and port 5433 is accessible.`);
+    }
+
     await app.init();
     server = app.getHttpServer();
   });
 
   afterAll(async () => {
+    try {
+      const tables = await prisma.$queryRaw<Array<{ tablename: string }>>`
+        SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+      `;
+      if (tables.some(t => t.tablename === 'User')) {
+        await prisma.user.deleteMany({});
+      }
+      await prisma.$disconnect();
+    } catch (error) {
+      console.warn('⚠️  Could not clean database:', error);
+    }
     await app.close();
   });
 
-
-//   Test 1 : la methode register 
-    it('POST /auth/register → 201', async () => {
+  it('POST /api/auth/register → 201', async () => {
     const res = await request(server)
-      .post('/auth/register')
+      .post('/api/auth/register')
       .send({
         firstName: 'Test',
         lastName: 'User',
@@ -45,11 +79,9 @@ describe('AuthModule (e2e)', () => {
     expect(res.body).not.toHaveProperty('password');
   });
 
-
-  //   Test 2 : la methode login 
-    it('POST /auth/login → 200 + JWT', async () => {
+  it('POST /api/auth/login → 200 + JWT', async () => {
     const res = await request(server)
-      .post('/auth/login')
+      .post('/api/auth/login')
       .send({
         email: 'testuser@test.com',
         password: 'Password123!',
@@ -57,24 +89,19 @@ describe('AuthModule (e2e)', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('accessToken');
-
+    expect(typeof res.body.accessToken).toBe('string');
+    expect(res.body.accessToken.length).toBeGreaterThan(0);
     accessToken = res.body.accessToken;
   });
 
-
-    //   Test 3 : Accès au route protégée sans Token
-
-    it('GET /auth/me → 401 sans token', async () => {
-    const res = await request(server).get('/auth/me');
+  it('GET /api/auth/my-profile → 401 sans token', async () => {
+    const res = await request(server).get('/api/auth/my-profile');
     expect(res.status).toBe(401);
   });
 
-
-      //   Test 4 : Accès au route protégée avec Token
-
-    it('GET /auth/me → 200 avec token', async () => {
+  it('GET /api/auth/my-profile → 200 avec token', async () => {
     const res = await request(server)
-      .get('/auth/me')
+      .get('/api/auth/my-profile')
       .set('Authorization', `Bearer ${accessToken}`);
 
     expect(res.status).toBe(200);

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 
 import { AuthService } from './auth.service';
@@ -35,6 +35,7 @@ export class AuthController {
     @ApiResponse({ status: 200, description: 'JWT retourné ! '})
     @ApiResponse({ status: 401, description: 'Identifiants invalides !'})
     @ApiBody({ type: LoginDto})
+    @HttpCode(200)
     @Post('login')
     async login(@Body() loginDto: LoginDto) {
         const accessToken = await this.authService.login(loginDto);
