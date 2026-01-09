@@ -9,7 +9,7 @@ type PrismaDelegate<T, C, U> = {
 };
 
 export abstract class BaseRepository<T, C, U> implements IBaseRepository<T, C, U> {
-  constructor(protected readonly model: PrismaDelegate<T, C, U>) {}
+  constructor(protected readonly model: PrismaDelegate<T, C, U>, ) {}
 
   async findAll(): Promise<T[]> {
     return this.model.findMany();

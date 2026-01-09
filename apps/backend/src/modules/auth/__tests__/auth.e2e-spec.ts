@@ -107,4 +107,35 @@ describe('AuthModule (e2e)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('email', 'testuser@test.com');
   });
+
+  it('POST /api/auth/register avec role ADMIN → 403 Forbidden', async () => {
+    const res = await request(server)
+      .post('/api/auth/register')
+      .send({
+        firstName: 'Hacker',
+        lastName: 'User',
+        email: 'hacker@test.com',
+        password: 'Password123!',
+        role: 'ADMIN',
+      });
+
+    expect(res.status).toBe(403);
+    expect(res.body.message).toContain('Role assignment is not allowed');
+  });
+
+  it('POST /api/auth/register sans role → 201 avec role CLIENT forcé', async () => {
+    const res = await request(server)
+      .post('/api/auth/register')
+      .send({
+        firstName: 'Normal',
+        lastName: 'User',
+        email: 'normal@test.com',
+        password: 'Password123!',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveProperty('id');
+    expect(res.body).not.toHaveProperty('password');
+    expect(res.body.role).toBe('CLIENT');
+  });
 });

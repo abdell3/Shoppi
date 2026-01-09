@@ -1,14 +1,14 @@
 import * as dotenv from 'dotenv';
 import { resolve } from 'path';
 
-const envTestPath = resolve(__dirname, '../.env.test');
+const envTestPath = resolve(__dirname, '../.env');
 dotenv.config({ path: envTestPath, override: false });
 
-const dockerDbUrl = 'postgresql://admin:admin_pass@localhost:5433/shoppi_db?schema=public';
+const dockerDbUrl = 'postgresql://admin:admin_pass@postgres:5432/shoppi_db?schema=public';
 process.env.DATABASE_URL = dockerDbUrl;
 
 if (process.env.DATABASE_URL?.includes('@postgres:')) {
-  console.warn('⚠️  DATABASE_URL contains Docker service name "postgres". Replacing with localhost:5433');
+  console.warn('⚠️  DATABASE_URL contains Docker service name "postgres". Replacing with localhost:5432');
   process.env.DATABASE_URL = dockerDbUrl;
 }
 

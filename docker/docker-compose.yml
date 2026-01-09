@@ -18,8 +18,9 @@ services:
       dockerfile: Dockerfile
     container_name: shoppi_backend
     restart: always
+    env_file:
+      - ../apps/backend/.env
     environment:
-      DATABASE_URL: postgresql://admin:admin_pass@postgres:5432/shoppi_db?schema=public
       PORT: 3003
     ports:
       - "3003:3003"

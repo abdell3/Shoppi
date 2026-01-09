@@ -21,6 +21,9 @@
     "prisma:migrate": "prisma migrate dev",
     "postinstall": "prisma generate"
   },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
