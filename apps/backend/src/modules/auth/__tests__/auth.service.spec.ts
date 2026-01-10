@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from '../auth.service';
 import { UsersRepository } from '../../users/users.repository';
+import { JwtService } from '@nestjs/jwt'
 import { ConflictException } from '@nestjs/common';
 import { hashPassword } from '../../../common/utils/password.util';
 
@@ -10,6 +11,7 @@ jest.mock('../../../common/utils/password.util');
 describe('AuthService - Register', () => {
     let authService: AuthService;
     let usersRepository: jest.Mocked<UsersRepository>;
+    let jwtService: jest.Mocked<JwtService>;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -22,11 +24,18 @@ describe('AuthService - Register', () => {
                         create: jest.fn(),
                     },
                 },
+                {
+                  provide: JwtService,
+                  useValue: {
+                    signAsync: jest.fn()
+                  },
+                },
             ],
         }).compile();
 
         authService = module.get<AuthService>(AuthService);
         usersRepository = module.get(UsersRepository);
+        jwtService = module.get(JwtService);
     })
 
     it('should register a new user successfully', async () => {

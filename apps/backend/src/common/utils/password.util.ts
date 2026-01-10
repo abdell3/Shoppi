@@ -1,7 +1,9 @@
-import * as bycrypt from 'bcrypt';
+import bycrypt from 'bcrypt';
 
-const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUND);
-if(!SALT_ROUNDS || Number.isNaN(SALT_ROUNDS)) {
+
+const SALT_ROUNDS = Number(process.env.BCRYPT_SALT_ROUND ?? 10);
+
+if (!SALT_ROUNDS || Number.isNaN(SALT_ROUNDS)) {
     throw new Error('BCRYPT_SALT_ROUND must be a valid number');
 }
 
