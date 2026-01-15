@@ -4,11 +4,14 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { LoginResponseDto } from './dto/login-response.dto';
+import { RegisterResponseDto } from './dto/register-response.dto';
+import { ProfileResponseDto } from './dto/profile-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RejectRolePipe } from './pipes/reject-role.pipe';
- import { ApiBearerAuth, ApiTags, ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags, ApiBody, ApiOperation, ApiResponse } from '@nestjs/swagger';
 
- interface AuthenticatedRequest extends Request {
+interface AuthenticatedRequest extends Request {
     user: {
         userId: string,
         email: string,
@@ -21,11 +24,16 @@ import { RejectRolePipe } from './pipes/reject-role.pipe';
 export class AuthController {
     constructor(private readonly authService: AuthService) {}
 
-    @ApiOperation({ summary: 'Créer un compte'})
-    @ApiResponse({ status: 201, description: 'User crée avec succès!'})
-    @ApiResponse({ status: 409, description: 'Email déjà utilisé !'})
-    @ApiResponse({ status: 403, description: 'Role assignment is not allowed via registration'})
-    @ApiBody({ type: CreateUserDto})
+    @ApiOperation({ summary: 'Créer un compte client' })
+    @ApiResponse({ 
+        status: 201, 
+        description: 'User créé avec succès',
+        type: RegisterResponseDto,
+    })
+    @ApiResponse({ status: 400, description: 'Validation error' })
+    @ApiResponse({ status: 409, description: 'Email déjà utilisé' })
+    @ApiResponse({ status: 403, description: 'Role assignment is not allowed via registration' })
+    @ApiBody({ type: CreateUserDto })
     @UsePipes(
         RejectRolePipe,
         new ValidationPipe({
@@ -41,10 +49,15 @@ export class AuthController {
 
 
 
-    @ApiOperation({ summary: 'Authentification : '})
-    @ApiResponse({ status: 200, description: 'JWT retourné ! '})
-    @ApiResponse({ status: 401, description: 'Identifiants invalides !'})
-    @ApiBody({ type: LoginDto})
+    @ApiOperation({ summary: 'Authentification et obtention du token JWT' })
+    @ApiResponse({ 
+        status: 200, 
+        description: 'Token JWT retourné avec succès',
+        type: LoginResponseDto,
+    })
+    @ApiResponse({ status: 400, description: 'Validation error' })
+    @ApiResponse({ status: 401, description: 'Identifiants invalides' })
+    @ApiBody({ type: LoginDto })
     @HttpCode(200)
     @Post('login')
     async login(@Body() loginDto: LoginDto) {
@@ -55,9 +68,13 @@ export class AuthController {
 
 
     @ApiBearerAuth()
-    @ApiOperation({ summary: 'Récupérer le profil user connecté : '})
-    @ApiResponse({ status: 200, description: 'User profil ! '})
-    @ApiResponse({ status: 401, description: 'Non authentifié !'})
+    @ApiOperation({ summary: 'Récupérer le profil de l\'utilisateur connecté' })
+    @ApiResponse({ 
+        status: 200, 
+        description: 'Profil utilisateur récupéré avec succès',
+        type: ProfileResponseDto,
+    })
+    @ApiResponse({ status: 401, description: 'Non authentifié' })
     @UseGuards(JwtAuthGuard)
     @Get('my-profile')
     async getProfile(@Req() req: AuthenticatedRequest) {
