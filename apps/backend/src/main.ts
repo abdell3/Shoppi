@@ -23,17 +23,19 @@ async function bootstrap() {
     forbidNonWhitelisted: true,
   }));
 
-  const config = new DocumentBuilder()
-    .setTitle('Shoppi API')
-    .setDescription('Documentation de l\'API E-commerce YouShop')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Shoppi API')
+      .setDescription('API documentation for Shoppi Backend')
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+    Logger.log(`📑 Swagger is running on: http://localhost:3003/api/docs`);
+  }
 
   await app.listen(3003);
   Logger.log(`🚀 Application is running on: http://localhost:3003/api`);
-  Logger.log(`📑 Swagger is running on: http://localhost:3003/api/docs`);
 }
 bootstrap();
