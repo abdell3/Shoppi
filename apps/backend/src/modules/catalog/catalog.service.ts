@@ -27,7 +27,7 @@ export class CatalogService {
       maxPrice: params.maxPrice,
     });
 
-    const entities = ProductEntity.fromPrismaArray(items);
+    const entities = ProductEntity.fromPersistenceArray(items);
     const totalPages = Math.ceil(total / limit);
 
     return {
