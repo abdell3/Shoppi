@@ -4,6 +4,9 @@ import { ApiBearerAuth, ApiTags, ApiBody, ApiOperation, ApiResponse } from '@nes
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { LoginResponseDto } from './dto/login-response.dto';
+import { RegisterResponseDto } from './dto/register-response.dto';
+import { ProfileResponseDto } from './dto/profile-response.dto';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RejectRolePipe } from './pipes/reject-role.pipe';
@@ -22,7 +25,11 @@ export class AuthController {
     constructor(private readonly authService: AuthService) {}
 
     @ApiOperation({ summary: 'Créer un compte utilisateur (CLIENT uniquement)' })
-    @ApiResponse({ status: 201, description: 'Utilisateur créé avec succès' })
+    @ApiResponse({ 
+        status: 201, 
+        description: 'Utilisateur créé avec succès',
+        type: RegisterResponseDto,
+    })
     @ApiResponse({ status: 400, description: 'Erreur de validation' })
     @ApiResponse({ status: 403, description: 'Assignment de rôle non autorisé via l\'enregistrement' })
     @ApiResponse({ status: 409, description: 'Email déjà utilisé' })
@@ -46,15 +53,7 @@ export class AuthController {
     @ApiResponse({ 
         status: 200, 
         description: 'Token JWT retourné avec succès',
-        schema: {
-            type: 'object',
-            properties: {
-                accessToken: {
-                    type: 'string',
-                    example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-                }
-            }
-        }
+        type: LoginResponseDto,
     })
     @ApiResponse({ status: 400, description: 'Erreur de validation' })
     @ApiResponse({ status: 401, description: 'Identifiants invalides' })
@@ -73,23 +72,7 @@ export class AuthController {
     @ApiResponse({ 
         status: 200, 
         description: 'Profil utilisateur retourné',
-        schema: {
-            type: 'object',
-            properties: {
-                userId: {
-                    type: 'string',
-                    example: '123e4567-e89b-12d3-a456-426614174000'
-                },
-                email: {
-                    type: 'string',
-                    example: 'user@example.com'
-                },
-                role: {
-                    type: 'string',
-                    example: 'CLIENT'
-                }
-            }
-        }
+        type: ProfileResponseDto,
     })
     @ApiResponse({ status: 401, description: 'Non authentifié - Token manquant ou invalide' })
     @UseGuards(JwtAuthGuard)
