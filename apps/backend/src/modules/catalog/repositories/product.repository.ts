@@ -9,7 +9,13 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
     super(prisma.product);
   }
 
-  async findPaginated(params: { page: number; limit: number; category?: string; minPrice?: number; maxPrice?: number;}): Promise<{ items: Product[]; total: number; }> {
+  async findPaginated(params: { 
+    page: number; 
+    limit: number; 
+    category?: string; 
+    minPrice?: number; 
+    maxPrice?: number;
+  }): Promise<{ items: Product[]; total: number; }> {
     const where: Prisma.ProductWhereInput = {
       isHidden: false,
     };

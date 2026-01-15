@@ -137,5 +137,5 @@ describe('AuthModule (e2e)', () => {
     expect(res.body).toHaveProperty('id');
     expect(res.body).not.toHaveProperty('password');
     expect(res.body.role).toBe('CLIENT');
-  });
+  }); 
 });

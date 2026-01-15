@@ -9,5 +9,3 @@ export class RejectRolePipe implements PipeTransform {
     return value;
   }
 }
-
-
