@@ -55,4 +55,38 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
       total,
     };
   }
+
+  async findAllAdmin(): Promise<Product[]> {
+    return this.prisma.product.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async softDelete(id: string): Promise<Product> {
+    return this.prisma.product.update({
+      where: { id },
+      data: { isHidden: true },
+    });
+  }
+
+  async generateUniqueSku(name: string): Promise<string> {
+    const baseSku = name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .substring(0, 20);
+
+    let sku = baseSku;
+    let counter = 1;
+
+    while (await this.prisma.product.findUnique({ where: { sku } })) {
+      sku = `${baseSku}-${counter}`;
+      counter++;
+    }
+
+    return sku;
+  }
 }
