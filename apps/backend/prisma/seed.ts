@@ -47,7 +47,6 @@ async function main() {
     console.log("Client user already exists");
   }
 
-  // Seed Categories
   const electronicsCategory = await prisma.category.upsert({
     where: { slug: "electronics" },
     update: {},
@@ -77,7 +76,6 @@ async function main() {
 
   console.log("Categories seeded");
 
-  // Seed Products
   await prisma.product.upsert({
     where: { sku: "IPHONE-14-128" },
     update: {},
