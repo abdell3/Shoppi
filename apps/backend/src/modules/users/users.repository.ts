@@ -15,5 +15,18 @@ export class UsersRepository extends BaseRepository <User, Prisma.UserCreateInpu
         });
     }
 
+    async findAll(): Promise<User[]> {
+        return this.prisma.user.findMany({
+            orderBy: {
+                createdAt: 'desc',
+            },
+        });
+    }
 
+    async softDelete(id: string): Promise<User> {
+        return this.prisma.user.update({
+            where: { id },
+            data: { isActive: false },
+        });
+    }
 }
