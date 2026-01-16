@@ -78,6 +78,7 @@ model Category {
   id       String    @id @default(uuid())
   name     String
   slug     String    @unique
+  isHidden Boolean   @default(false)
   products Product[]
 }
 
