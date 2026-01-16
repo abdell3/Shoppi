@@ -14,4 +14,30 @@ export class CategoryRepository extends BaseRepository<Category, Prisma.Category
       where: { slug },
     });
   }
+
+  async findPublic(): Promise<Category[]> {
+    return this.prisma.category.findMany({
+      where: {
+        isHidden: false,
+      },
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async findAllAdmin(): Promise<Category[]> {
+    return this.prisma.category.findMany({
+      orderBy: {
+        name: 'asc',
+      },
+    });
+  }
+
+  async softDelete(id: string): Promise<Category> {
+    return this.prisma.category.update({
+      where: { id },
+      data: { isHidden: true },
+    });
+  }
 }

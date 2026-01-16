@@ -3,14 +3,28 @@ import { CatalogController } from './catalog.controller';
 import { CatalogService } from './catalog.service';
 import { AdminProductsController } from './admin-products.controller';
 import { AdminProductsService } from './admin-products.service';
+import { PublicCategoriesController } from './public-categories.controller';
+import { AdminCategoriesController } from './admin-categories.controller';
+import { AdminCategoriesService } from './admin-categories.service';
 import { ProductRepository } from './repositories/product.repository';
 import { CategoryRepository } from './repositories/category.repository';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [AuthModule],
-  controllers: [CatalogController, AdminProductsController],
-  providers: [CatalogService, AdminProductsService, ProductRepository, CategoryRepository],
+  controllers: [
+    CatalogController,
+    AdminProductsController,
+    PublicCategoriesController,
+    AdminCategoriesController,
+  ],
+  providers: [
+    CatalogService,
+    AdminProductsService,
+    AdminCategoriesService,
+    ProductRepository,
+    CategoryRepository,
+  ],
   exports: [ProductRepository, CategoryRepository],
 })
 export class CatalogModule {}
