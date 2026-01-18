@@ -7,6 +7,7 @@ type ProductPersistence = {
   price: number;
   categoryId: string;
   isHidden: boolean;
+  categorySlug?: string | null;
 };
 
 export class ProductEntity {
@@ -69,7 +70,7 @@ export class ProductEntity {
       data.name,
       data.description,
       data.price,
-      null,
+      data.categorySlug ?? null,
       !data.isHidden,
     );
   }

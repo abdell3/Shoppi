@@ -15,7 +15,16 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
     category?: string; 
     minPrice?: number; 
     maxPrice?: number;
-  }): Promise<{ items: Product[]; total: number; }> {
+  }): Promise<{ items: (Product & { category?: { slug: string } | null })[]; total: number; }> {
+    const page = typeof params.page === 'string' ? parseInt(params.page, 10) : params.page;
+    const limit = typeof params.limit === 'string' ? parseInt(params.limit, 10) : params.limit;
+    const minPrice = params.minPrice !== undefined 
+      ? (typeof params.minPrice === 'string' ? parseFloat(params.minPrice) : params.minPrice)
+      : undefined;
+    const maxPrice = params.maxPrice !== undefined
+      ? (typeof params.maxPrice === 'string' ? parseFloat(params.maxPrice) : params.maxPrice)
+      : undefined;
+
     const where: Prisma.ProductWhereInput = {
       isHidden: false,
     };
@@ -26,24 +35,31 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
       };
     }
 
-    if (params.minPrice !== undefined || params.maxPrice !== undefined) {
+    if (minPrice !== undefined || maxPrice !== undefined) {
       where.price = {};
-      if (params.minPrice !== undefined) {
-        where.price.gte = params.minPrice;
+      if (minPrice !== undefined) {
+        where.price.gte = minPrice;
       }
-      if (params.maxPrice !== undefined) {
-        where.price.lte = params.maxPrice;
+      if (maxPrice !== undefined) {
+        where.price.lte = maxPrice;
       }
     }
 
-    const skip = (params.page - 1) * params.limit;
-    const take = params.limit;
+    const skip = Number((page - 1) * limit);
+    const take = Number(limit);
 
     const [items, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
         skip,
         take,
+        include: {
+          category: {
+            select: {
+              slug: true,
+            },
+          },
+        },
       }),
       this.prisma.product.count({
         where,

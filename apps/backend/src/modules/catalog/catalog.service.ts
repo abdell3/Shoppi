@@ -27,7 +27,26 @@ export class CatalogService {
       maxPrice: params.maxPrice,
     });
 
-    const entities = ProductEntity.fromPersistenceArray(items);
+    const entities = items.map(item => {
+      const persistence: {
+        id: string;
+        name: string;
+        description: string;
+        price: number;
+        categoryId: string;
+        isHidden: boolean;
+        categorySlug: string | null;
+      } = {
+        id: item.id,
+        name: item.name,
+        description: item.description,
+        price: item.price,
+        categoryId: item.categoryId,
+        isHidden: item.isHidden,
+        categorySlug: (item as any).category?.slug || null,
+      };
+      return ProductEntity.fromPersistence(persistence);
+    });
     const totalPages = Math.ceil(total / limit);
 
     return {
