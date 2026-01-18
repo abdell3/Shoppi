@@ -13,10 +13,10 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [AuthModule],
   controllers: [
-    CatalogController,
     AdminProductsController,
-    PublicCategoriesController,
     AdminCategoriesController,
+    PublicCategoriesController,
+    CatalogController,
   ],
   providers: [
     CatalogService,

@@ -13,6 +13,10 @@ export class AdminProductsService {
   ) {}
 
   async create(createProductDto: CreateProductDto): Promise<ProductEntity> {
+    if (!createProductDto.categoryId) {
+      throw new NotFoundException(`Category ID is required`);
+    }
+
     const category = await this.categoryRepository.findById(createProductDto.categoryId);
 
     if (!category) {
