@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module, forwardRef, Logger } from '@nestjs/common';
 import { InventoryController } from './inventory.controller';
 import { InventoryService } from './inventory.service';
 import { InventoryRepository } from './repositories/inventory.repository';
@@ -8,6 +8,6 @@ import { AuthModule } from '../auth/auth.module';
 @Module({
   imports: [forwardRef(() => CatalogModule), AuthModule],
   controllers: [InventoryController],
-  providers: [InventoryService, InventoryRepository],
+  providers: [InventoryService, InventoryRepository, Logger],
 })
 export class InventoryModule {}

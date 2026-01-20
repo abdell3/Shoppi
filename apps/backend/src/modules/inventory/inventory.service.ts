@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import { ProductRepository } from '../catalog/repositories/product.repository';
 import { InventoryRepository } from './repositories/inventory.repository';
@@ -11,6 +11,7 @@ export class InventoryService {
     private readonly prisma: PrismaService,
     private readonly productRepository: ProductRepository,
     private readonly inventoryRepository: InventoryRepository,
+    private readonly logger: Logger,
   ) {}
 
   async updateStockBySku(dto: UpdateStockBySkuDto): Promise<{
@@ -20,9 +21,12 @@ export class InventoryService {
   }> {
     const { sku, delta } = dto;
 
+    this.logger.log(`Updating stock for SKU ${sku} with delta ${delta}`);
+
     return this.prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({ where: { sku } });
       if (!product) {
+        this.logger.warn(`Product with SKU ${sku} not found`);
         throw new NotFoundException(`Product with SKU ${sku} not found`);
       }
 
@@ -31,6 +35,9 @@ export class InventoryService {
       const nextQuantity = currentQuantity + delta;
 
       if (nextQuantity < 0) {
+        this.logger.warn(
+          `Insufficient stock for SKU ${sku}. Current: ${currentQuantity}, Delta: ${delta}`,
+        );
         throw new BadRequestException('Insufficient stock');
       }
 
@@ -47,6 +54,8 @@ export class InventoryService {
           tx,
         );
       }
+
+      this.logger.log(`Stock updated for SKU ${sku}. New quantity: ${inventory.quantity}`);
 
       return {
         sku: product.sku,

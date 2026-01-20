@@ -121,7 +121,6 @@ describe('InventoryModule (e2e)', () => {
     }
     clientToken = clientLoginRes.body.accessToken;
 
-    // Create products for testing
     const productWithStock = await prisma.product.create({
       data: {
         name: 'Product With Stock',
@@ -236,7 +235,6 @@ describe('InventoryModule (e2e)', () => {
     });
 
     it('GET /api/inventory/out-of-stock → 404 si aucun produit en rupture', async () => {
-      // Delete all out of stock products
       await prisma.inventory.updateMany({
         where: { quantity: 0 },
         data: { quantity: 1 },
@@ -249,7 +247,6 @@ describe('InventoryModule (e2e)', () => {
       expect(res.status).toBe(404);
       expect(res.body.message).toContain('No products out of stock');
 
-      // Restore for other tests
       await prisma.inventory.update({
         where: { productId: productOutOfStockId },
         data: { quantity: 0 },
@@ -266,11 +263,117 @@ describe('InventoryModule (e2e)', () => {
         expect(item.quantity).toBe(0);
       });
 
-      // Vérifier que le produit avec stock n'est pas dans la liste
       const productWithStockInList = res.body.items.find(
         (item: any) => item.product.id === productWithStockId
       );
       expect(productWithStockInList).toBeUndefined();
+    });
+  });
+
+  describe('PATCH /api/inventory/stock/:sku', () => {
+    const patchSku = 'SKU-PATCH-TEST';
+    let patchProductId: string;
+
+    beforeEach(async () => {
+      await prisma.inventory.deleteMany({ where: { product: { sku: patchSku } } });
+      await prisma.product.deleteMany({ where: { sku: patchSku } });
+
+      const product = await prisma.product.create({
+        data: {
+          name: 'Patchable Product',
+          description: 'Product used for patch tests',
+          price: 49.99,
+          sku: patchSku,
+          isHidden: false,
+          categoryId,
+        },
+      });
+      patchProductId = product.id;
+
+      await prisma.inventory.create({
+        data: {
+          productId: patchProductId,
+          quantity: 10,
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await prisma.inventory.deleteMany({ where: { productId: patchProductId } });
+      await prisma.product.deleteMany({ where: { id: patchProductId } });
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 200 success admin (delta positif)', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: 5 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.sku).toBe(patchSku);
+      expect(res.body.quantity).toBe(15);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 200 success admin (delta négatif)', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: -4 });
+
+      expect(res.status).toBe(200);
+      expect(res.body.sku).toBe(patchSku);
+      expect(res.body.quantity).toBe(6);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 400 stock insuffisant', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: -11 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Insufficient stock');
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 404 SKU inexistant', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/UNKNOWN-SKU`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: 1 });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 403 rôle CLIENT', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({ delta: 1 });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 401 sans token', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .send({ delta: 1 });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 400 delta en dehors des bornes (-15000)', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: -15000 });
+
+      expect(res.status).toBe(400);
+      expect(Array.isArray(res.body.message)).toBe(true);
+      expect(
+        res.body.message.some((m: string) =>
+          m.includes('Delta cannot be less than -10000'),
+        ),
+      ).toBe(true);
     });
   });
 });
