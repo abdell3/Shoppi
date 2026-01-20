@@ -102,7 +102,7 @@ CREATE UNIQUE INDEX "Category_slug_key" ON "Category"("slug");
 CREATE UNIQUE INDEX "Tag_name_key" ON "Tag"("name");
 
 -- CreateIndex
-CREATE INDEX "_ProductToTag_B_index" ON "_ProductToTag"("B");
+CREATE INDEX "_ProductToTag_B_index" ON "_ProductToTag"("B");  
 
 -- AddForeignKey
 ALTER TABLE "Order" ADD CONSTRAINT "Order_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -1,18 +1,11 @@
-datasource db {
-  provider = "postgresql" 
-}
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
-enum UserRole {
-  CLIENT
-  ADMIN
-  MANAGER
+datasource db {
+  provider = "postgresql"
 }
-
 
 model User {
   id        String   @id @default(uuid())
@@ -23,8 +16,8 @@ model User {
   phone     String?
   address   String?
   role      UserRole @default(CLIENT)
-  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
+  isActive  Boolean  @default(true)
   orders    Order[]
 }
 
@@ -33,7 +26,6 @@ model Order {
   totalAmount Float
   status      String      @default("PENDING")
   createdAt   DateTime    @default(now())
-  
   userId      String
   user        User        @relation(fields: [userId], references: [id])
   items       OrderItem[]
@@ -43,37 +35,32 @@ model OrderItem {
   id              String  @id @default(uuid())
   quantity        Int
   priceAtPurchase Float
-  
   orderId         String
-  order           Order   @relation(fields: [orderId], references: [id])
   productId       String
+  order           Order   @relation(fields: [orderId], references: [id])
   product         Product @relation(fields: [productId], references: [id])
 }
-
-// module catalog
 
 model Product {
   id          String      @id @default(uuid())
   name        String
-  description String      @db.Text
+  description String
   price       Float
   sku         String      @unique
   isHidden    Boolean     @default(false)
-  
   categoryId  String
-  category    Category    @relation(fields: [categoryId], references: [id])
   inventory   Inventory?
-  tags        Tag[]       
   orderItems  OrderItem[]
+  category    Category    @relation(fields: [categoryId], references: [id])
+  tags        Tag[]       @relation("ProductToTag")
 }
 
 model Inventory {
-  id                String  @id @default(uuid())
-  availableQuantity Int     @default(0)
-  reservedQuantity  Int     @default(0)
-  
-  productSku        String  @unique
-  product           Product @relation(fields: [productSku], references: [sku])
+  id        String   @id @default(uuid())
+  quantity  Int      @default(0)
+  productId String   @unique
+  updatedAt DateTime @default(now()) @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Category {
@@ -88,5 +75,11 @@ model Tag {
   id          String    @id @default(uuid())
   name        String    @unique
   description String?
-  products    Product[]
+  products    Product[] @relation("ProductToTag")
+}
+
+enum UserRole {
+  CLIENT
+  ADMIN
+  MANAGER
 }
