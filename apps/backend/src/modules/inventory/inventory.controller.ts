@@ -1,5 +1,5 @@
-import { Body, Controller, Patch, Param, UseGuards, HttpStatus, HttpCode } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Patch, Param, Get, Query, UseGuards, HttpStatus, HttpCode, NotFoundException } from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiParam, ApiTags, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -7,6 +7,7 @@ import { UserRole } from '@prisma/client';
 import { InventoryService } from './inventory.service';
 import { UpdateStockBySkuDto } from './dto/update-stock-by-sku.dto';
 import { UpdateStockDeltaDto } from './dto/update-stock-delta.dto';
+import { OutOfStockQueryDto } from './dto/out-of-stock-query.dto';
 
 @ApiTags('Inventory')
 @ApiBearerAuth()
@@ -47,11 +48,83 @@ export class InventoryController {
     quantity: number;
     updatedAt: Date;
   }> {
-    // Construire le DTO complet avec le SKU du paramètre de route
     const fullDto: UpdateStockBySkuDto = {
       sku,
       delta: dto.delta,
     };
     return this.inventoryService.updateStockBySku(fullDto);
+  }
+
+  @ApiOperation({ summary: 'Get products out of stock (Admin only)' })
+  @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of products out of stock',
+    schema: {
+      example: {
+        items: [
+          {
+            id: 'inventory-id',
+            quantity: 0,
+            updatedAt: '2026-01-19T12:00:00.000Z',
+            product: {
+              id: 'product-id',
+              name: 'iPhone 15 Pro',
+              sku: 'SKU-IPHONE-15-PRO',
+              price: 999.99,
+              category: {
+                id: 'category-id',
+                name: 'Electronics',
+                slug: 'electronics',
+              },
+            },
+          },
+        ],
+        meta: {
+          page: 1,
+          limit: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
+  @ApiResponse({ status: 404, description: 'No products out of stock found' })
+  @Get('out-of-stock')
+  @HttpCode(HttpStatus.OK)
+  async getOutOfStock(@Query() query: OutOfStockQueryDto): Promise<{
+    items: Array<{
+      id: string;
+      quantity: number;
+      updatedAt: Date;
+      product: {
+        id: string;
+        name: string;
+        sku: string;
+        price: number;
+        category: {
+          id: string;
+          name: string;
+          slug: string;
+        };
+      };
+    }>;
+    meta: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }> {
+    const result = await this.inventoryService.getOutOfStock(query);
+    
+    if (result.items.length === 0 && result.meta.total === 0) {
+      throw new NotFoundException('No products out of stock found');
+    }
+
+    return result;
   }
 }
