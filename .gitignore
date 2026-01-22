@@ -36,3 +36,5 @@ logs/
 .docker/
 
 gitignore
+
+.ai

@@ -2,7 +2,6 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { PrismaService } from '../../database/prisma.service';
 import { ProductRepository } from '../catalog/repositories/product.repository';
 import { InventoryRepository } from './repositories/inventory.repository';
-import { UpdateStockBySkuDto } from './dto/update-stock-by-sku.dto';
 import { OutOfStockQueryDto } from './dto/out-of-stock-query.dto';
 
 @Injectable()
@@ -14,17 +13,15 @@ export class InventoryService {
     private readonly logger: Logger,
   ) {}
 
-  async updateStockBySku(dto: UpdateStockBySkuDto): Promise<{
+  async updateStockBySku(sku: string, delta: number): Promise<{
     sku: string;
     quantity: number;
     updatedAt: Date;
   }> {
-    const { sku, delta } = dto;
-
     this.logger.log(`Updating stock for SKU ${sku} with delta ${delta}`);
 
     return this.prisma.$transaction(async (tx) => {
-      const product = await tx.product.findUnique({ where: { sku } });
+      const product = await this.productRepository.findBySku(sku, tx);
       if (!product) {
         this.logger.warn(`Product with SKU ${sku} not found`);
         throw new NotFoundException(`Product with SKU ${sku} not found`);
