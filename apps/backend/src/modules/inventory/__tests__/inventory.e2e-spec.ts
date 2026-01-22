@@ -371,8 +371,6 @@ describe('InventoryModule (e2e)', () => {
       
       expect(res.body).toHaveProperty('message');
       
-      console.log('Response body:', JSON.stringify(res.body, null, 2));
-      
       const errorMessages = Array.isArray(res.body.message) 
         ? res.body.message 
         : (typeof res.body.message === 'string' ? [res.body.message] : []);
