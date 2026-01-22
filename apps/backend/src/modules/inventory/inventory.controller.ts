@@ -5,7 +5,6 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { InventoryService } from './inventory.service';
-import { UpdateStockBySkuDto } from './dto/update-stock-by-sku.dto';
 import { UpdateStockDeltaDto } from './dto/update-stock-delta.dto';
 import { OutOfStockQueryDto } from './dto/out-of-stock-query.dto';
 
@@ -48,11 +47,7 @@ export class InventoryController {
     quantity: number;
     updatedAt: Date;
   }> {
-    const fullDto: UpdateStockBySkuDto = {
-      sku,
-      delta: dto.delta,
-    };
-    return this.inventoryService.updateStockBySku(fullDto);
+    return this.inventoryService.updateStockBySku(sku, dto.delta);
   }
 
   @ApiOperation({ summary: 'Get products out of stock (Admin only)' })
