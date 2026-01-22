@@ -50,12 +50,15 @@ export class InventoryController {
     return this.inventoryService.updateStockBySku(sku, dto.delta);
   }
 
-  @ApiOperation({ summary: 'Get products out of stock (Admin only)' })
+  @ApiOperation({ 
+    summary: 'Get products out of stock (Admin only)',
+    description: 'Retrieves a paginated list of products that are out of stock (quantity = 0). Returns 404 if no products are out of stock.',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, description: 'Page number (default: 1)' })
   @ApiQuery({ name: 'limit', required: false, type: Number, description: 'Items per page (default: 20)' })
   @ApiResponse({
     status: 200,
-    description: 'List of products out of stock',
+    description: 'List of products out of stock (quantity = 0)',
     schema: {
       example: {
         items: [
@@ -85,9 +88,12 @@ export class InventoryController {
       },
     },
   })
+  @ApiResponse({ 
+    status: 404, 
+    description: 'No products out of stock found - Returns 404 when there are no products with quantity = 0 (business rule: empty result set triggers 404)' 
+  })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden - Admin role required' })
-  @ApiResponse({ status: 404, description: 'No products out of stock found' })
   @Get('out-of-stock')
   @HttpCode(HttpStatus.OK)
   async getOutOfStock(@Query() query: OutOfStockQueryDto): Promise<{
@@ -116,6 +122,7 @@ export class InventoryController {
   }> {
     const result = await this.inventoryService.getOutOfStock(query);
     
+    // l'API doit retourner 404 au lieu d'un tableau vide avec meta.total = 0
     if (result.items.length === 0 && result.meta.total === 0) {
       throw new NotFoundException('No products out of stock found');
     }
