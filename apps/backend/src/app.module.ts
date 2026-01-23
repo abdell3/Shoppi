@@ -5,6 +5,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { UserModule } from './modules/users/users.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
     AuthModule,
     CatalogModule,
     InventoryModule,
+    OrdersModule,
     UserModule,
   ],
 })

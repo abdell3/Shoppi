@@ -1,0 +1,592 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { execSync } from 'child_process';
+import { resolve } from 'path';
+import { AppModule } from '../../../app.module';
+import { PrismaService } from '../../../database/prisma.service';
+import { UserRole } from '@prisma/client';
+import { hashPassword } from '../../../common/utils/password.util';
+
+describe('OrdersModule (e2e)', () => {
+  let app: INestApplication;
+  let server: any;
+  let adminToken: string;
+  let clientToken: string;
+  let client2Token: string;
+  let prisma: PrismaService;
+  let categoryId: string;
+  let product1Id: string;
+  let product2Id: string;
+  let productHiddenId: string;
+  let clientUserId: string;
+  let client2UserId: string;
+
+  beforeAll(async () => {
+    try {
+      console.log('🔄 Running Prisma migrations...');
+      execSync('npx prisma migrate deploy', {
+        cwd: resolve(__dirname, '../../../../'),
+        env: { ...process.env },
+        stdio: 'inherit',
+      });
+      console.log('✅ Prisma migrations applied');
+    } catch (error) {
+      console.error('❌ Failed to run Prisma migrations:', error);
+      throw error;
+    }
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+
+    app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api');
+
+    prisma = moduleFixture.get<PrismaService>(PrismaService);
+    try {
+      await prisma.$connect();
+      console.log('✅ Database connected');
+    } catch (error) {
+      console.error('❌ Database connection failed');
+      throw error;
+    }
+
+    await app.init();
+    server = app.getHttpServer();
+
+    // Cleanup
+    await prisma.orderItem.deleteMany({});
+    await prisma.order.deleteMany({});
+    await prisma.inventory.deleteMany({});
+    await prisma.product.deleteMany({});
+    await prisma.category.deleteMany({});
+    await prisma.user.deleteMany({});
+
+    // Create users
+    const adminPassword = await hashPassword('AdminPass123!');
+    await prisma.user.upsert({
+      where: { email: 'admin@test.com' },
+      update: { password: adminPassword, role: UserRole.ADMIN, isActive: true },
+      create: {
+        firstName: 'Admin',
+        lastName: 'Test',
+        email: 'admin@test.com',
+        password: adminPassword,
+        role: UserRole.ADMIN,
+        isActive: true,
+      },
+    });
+
+    const clientPassword = await hashPassword('ClientPass123!');
+    const clientUser = await prisma.user.upsert({
+      where: { email: 'client@test.com' },
+      update: { password: clientPassword, role: UserRole.CLIENT, isActive: true },
+      create: {
+        firstName: 'Client',
+        lastName: 'Test',
+        email: 'client@test.com',
+        password: clientPassword,
+        role: UserRole.CLIENT,
+        isActive: true,
+      },
+    });
+    clientUserId = clientUser.id;
+
+    const client2Password = await hashPassword('Client2Pass123!');
+    const client2User = await prisma.user.upsert({
+      where: { email: 'client2@test.com' },
+      update: { password: client2Password, role: UserRole.CLIENT, isActive: true },
+      create: {
+        firstName: 'Client2',
+        lastName: 'Test',
+        email: 'client2@test.com',
+        password: client2Password,
+        role: UserRole.CLIENT,
+        isActive: true,
+      },
+    });
+    client2UserId = client2User.id;
+
+    // Create category
+    const category = await prisma.category.upsert({
+      where: { slug: 'electronics' },
+      update: { isHidden: false },
+      create: {
+        name: 'Electronics',
+        slug: 'electronics',
+        isHidden: false,
+      },
+    });
+    categoryId = category.id;
+
+    // Login users
+    const adminLoginRes = await request(server).post('/api/auth/login').send({
+      email: 'admin@test.com',
+      password: 'AdminPass123!',
+    });
+    if (adminLoginRes.status !== 200 || !adminLoginRes.body.accessToken) {
+      throw new Error(`Admin login failed: ${adminLoginRes.status}`);
+    }
+    adminToken = adminLoginRes.body.accessToken;
+
+    const clientLoginRes = await request(server).post('/api/auth/login').send({
+      email: 'client@test.com',
+      password: 'ClientPass123!',
+    });
+    if (clientLoginRes.status !== 200 || !clientLoginRes.body.accessToken) {
+      throw new Error(`Client login failed: ${clientLoginRes.status}`);
+    }
+    clientToken = clientLoginRes.body.accessToken;
+
+    const client2LoginRes = await request(server).post('/api/auth/login').send({
+      email: 'client2@test.com',
+      password: 'Client2Pass123!',
+    });
+    if (client2LoginRes.status !== 200 || !client2LoginRes.body.accessToken) {
+      throw new Error(`Client2 login failed: ${client2LoginRes.status}`);
+    }
+    client2Token = client2LoginRes.body.accessToken;
+
+    // Create products
+    const product1 = await prisma.product.create({
+      data: {
+        name: 'Product 1',
+        description: 'Test product 1',
+        price: 99.99,
+        sku: 'SKU-PRODUCT-1',
+        isHidden: false,
+        categoryId: categoryId,
+      },
+    });
+    product1Id = product1.id;
+
+    const product2 = await prisma.product.create({
+      data: {
+        name: 'Product 2',
+        description: 'Test product 2',
+        price: 149.99,
+        sku: 'SKU-PRODUCT-2',
+        isHidden: false,
+        categoryId: categoryId,
+      },
+    });
+    product2Id = product2.id;
+
+    const productHidden = await prisma.product.create({
+      data: {
+        name: 'Hidden Product',
+        description: 'Hidden test product',
+        price: 199.99,
+        sku: 'SKU-PRODUCT-HIDDEN',
+        isHidden: true,
+        categoryId: categoryId,
+      },
+    });
+    productHiddenId = productHidden.id;
+
+    // Create inventory
+    await prisma.inventory.create({
+      data: {
+        productId: product1Id,
+        quantity: 10,
+      },
+    });
+
+    await prisma.inventory.create({
+      data: {
+        productId: product2Id,
+        quantity: 5,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    try {
+      await prisma.orderItem.deleteMany({});
+      await prisma.order.deleteMany({});
+      await prisma.inventory.deleteMany({});
+      await prisma.product.deleteMany({});
+      await prisma.category.deleteMany({});
+      await prisma.user.deleteMany({});
+      await prisma.$disconnect();
+    } catch (error) {
+      console.warn('⚠️  Could not clean database:', error);
+    }
+    await app.close();
+  });
+
+  describe('POST /api/orders', () => {
+    it('POST /api/orders → 201 success CLIENT creates order', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [
+            { productId: product1Id, quantity: 2 },
+            { productId: product2Id, quantity: 1 },
+          ],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body).toHaveProperty('id');
+      expect(res.body).toHaveProperty('totalAmount');
+      expect(res.body.status).toBe('PENDING');
+      expect(res.body.userId).toBe(clientUserId);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].quantity).toBe(2);
+      expect(res.body.items[0].unitPriceAtPurchase).toBe(99.99);
+      expect(res.body.items[1].quantity).toBe(1);
+      expect(res.body.items[1].unitPriceAtPurchase).toBe(149.99);
+    });
+
+    it('POST /api/orders → 403 ADMIN cannot create order', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          items: [{ productId: product1Id, quantity: 1 }],
+        });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('POST /api/orders → 401 without token', async () => {
+      const res = await request(server).post('/api/orders').send({
+        items: [{ productId: product1Id, quantity: 1 }],
+      });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('POST /api/orders → 400 insufficient stock', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: product1Id, quantity: 100 }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Insufficient stock');
+    });
+
+    it('POST /api/orders → 400 product not found', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: 'non-existent-id', quantity: 1 }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('not found');
+    });
+
+    it('POST /api/orders → 400 hidden product', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: productHiddenId, quantity: 1 }],
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('not available');
+    });
+
+    it('POST /api/orders → 400 invalid quantity (0)', async () => {
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: product1Id, quantity: 0 }],
+        });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe('GET /api/orders', () => {
+    let order1Id: string;
+    let order2Id: string;
+
+    beforeAll(async () => {
+      // Create orders for testing
+      const order1 = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+      order1Id = order1.id;
+
+      const order2 = await prisma.order.create({
+        data: {
+          userId: client2UserId,
+          totalAmount: 149.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product2Id,
+              quantity: 1,
+              priceAtPurchase: 149.99,
+            },
+          },
+        },
+      });
+      order2Id = order2.id;
+    });
+
+    it('GET /api/orders → 200 CLIENT sees only own orders', async () => {
+      const res = await request(server)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      // CLIENT should only see orders where userId matches
+      res.body.forEach((order: any) => {
+        expect(order.userId).toBe(clientUserId);
+      });
+    });
+
+    it('GET /api/orders → 200 ADMIN sees all orders', async () => {
+      const res = await request(server)
+        .get('/api/orders')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body)).toBe(true);
+      expect(res.body.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('GET /api/orders → 401 without token', async () => {
+      const res = await request(server).get('/api/orders');
+      expect(res.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/orders/:id', () => {
+    let orderId: string;
+
+    beforeAll(async () => {
+      const order = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+      orderId = order.id;
+    });
+
+    it('GET /api/orders/:id → 200 CLIENT sees own order', async () => {
+      const res = await request(server)
+        .get(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(orderId);
+      expect(res.body.userId).toBe(clientUserId);
+    });
+
+    it('GET /api/orders/:id → 200 ADMIN sees any order', async () => {
+      const res = await request(server)
+        .get(`/api/orders/${orderId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.id).toBe(orderId);
+    });
+
+    it('GET /api/orders/:id → 403 CLIENT cannot see other client order', async () => {
+      // Create order for client2
+      const otherOrder = await prisma.order.create({
+        data: {
+          userId: client2UserId,
+          totalAmount: 149.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product2Id,
+              quantity: 1,
+              priceAtPurchase: 149.99,
+            },
+          },
+        },
+      });
+
+      const res = await request(server)
+        .get(`/api/orders/${otherOrder.id}`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('GET /api/orders/:id → 404 order not found', async () => {
+      const res = await request(server)
+        .get('/api/orders/non-existent-id')
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /api/orders/:id/cancel', () => {
+    let pendingOrderId: string;
+    let paidOrderId: string;
+
+    beforeEach(async () => {
+      // Create PENDING order
+      const pendingOrder = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 2,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+      pendingOrderId = pendingOrder.id;
+
+      // Create PAID order
+      const paidOrder = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 149.99,
+          status: 'PAID',
+          items: {
+            create: {
+              productId: product2Id,
+              quantity: 1,
+              priceAtPurchase: 149.99,
+            },
+          },
+        },
+      });
+      paidOrderId = paidOrder.id;
+    });
+
+    afterEach(async () => {
+      await prisma.orderItem.deleteMany({ where: { orderId: { in: [pendingOrderId, paidOrderId] } } });
+      await prisma.order.deleteMany({ where: { id: { in: [pendingOrderId, paidOrderId] } } });
+    });
+
+    it('PATCH /api/orders/:id/cancel → 200 CLIENT cancels PENDING order', async () => {
+      const res = await request(server)
+        .patch(`/api/orders/${pendingOrderId}/cancel`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('CANCELLED');
+      
+      // Verify stock was restored
+      const inventory = await prisma.inventory.findUnique({
+        where: { productId: product1Id },
+      });
+      expect(inventory?.quantity).toBeGreaterThanOrEqual(10);
+    });
+
+    it('PATCH /api/orders/:id/cancel → 400 cannot cancel PAID order', async () => {
+      const res = await request(server)
+        .patch(`/api/orders/${paidOrderId}/cancel`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Cannot cancel');
+    });
+
+    it('PATCH /api/orders/:id/cancel → 403 CLIENT cannot cancel other client order', async () => {
+      const otherOrder = await prisma.order.create({
+        data: {
+          userId: client2UserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+
+      const res = await request(server)
+        .patch(`/api/orders/${otherOrder.id}/cancel`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(res.status).toBe(403);
+
+      await prisma.orderItem.deleteMany({ where: { orderId: otherOrder.id } });
+      await prisma.order.delete({ where: { id: otherOrder.id } });
+    });
+  });
+
+  describe('PATCH /api/orders/:id/status', () => {
+    let orderId: string;
+
+    beforeEach(async () => {
+      const order = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+      orderId = order.id;
+    });
+
+    afterEach(async () => {
+      await prisma.orderItem.deleteMany({ where: { orderId } });
+      await prisma.order.delete({ where: { id: orderId } });
+    });
+
+    it('PATCH /api/orders/:id/status → 200 ADMIN updates status', async () => {
+      const res = await request(server)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'PAID' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('PAID');
+    });
+
+    it('PATCH /api/orders/:id/status → 403 CLIENT cannot update status', async () => {
+      const res = await request(server)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({ status: 'PAID' });
+
+      expect(res.status).toBe(403);
+    });
+  });
+});

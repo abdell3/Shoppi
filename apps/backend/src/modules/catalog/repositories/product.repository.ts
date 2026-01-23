@@ -80,6 +80,14 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
     return client.product.findUnique({ where: { sku } });
   }
 
+  async findById(
+    id: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Product | null> {
+    const client = tx ?? this.prisma;
+    return client.product.findUnique({ where: { id } });
+  }
+
   async findAllAdmin(): Promise<Product[]> {
     return this.prisma.product.findMany({
       orderBy: {
