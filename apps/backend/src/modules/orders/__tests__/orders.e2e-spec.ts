@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { execSync } from 'child_process';
 import { resolve } from 'path';
@@ -42,6 +42,13 @@ describe('OrdersModule (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
 
     prisma = moduleFixture.get<PrismaService>(PrismaService);
     try {
@@ -304,6 +311,7 @@ describe('OrdersModule (e2e)', () => {
         });
 
       expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty('message');
     });
   });
 
@@ -587,6 +595,289 @@ describe('OrdersModule (e2e)', () => {
         .send({ status: 'PAID' });
 
       expect(res.status).toBe(403);
+    });
+
+    it('PATCH /api/orders/:id/status → 400 PAID → CANCELLED transition forbidden', async () => {
+      // Create PAID order
+      const paidOrder = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PAID',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+
+      const res = await request(server)
+        .patch(`/api/orders/${paidOrder.id}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'CANCELLED' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid status transition');
+
+      await prisma.orderItem.deleteMany({ where: { orderId: paidOrder.id } });
+      await prisma.order.delete({ where: { id: paidOrder.id } });
+    });
+
+    it('PATCH /api/orders/:id/status → 400 CANCELLED → PENDING transition forbidden', async () => {
+      const cancelledOrder = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'CANCELLED',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 1,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+
+      const res = await request(server)
+        .patch(`/api/orders/${cancelledOrder.id}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'PENDING' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Invalid status transition');
+
+      await prisma.orderItem.deleteMany({ where: { orderId: cancelledOrder.id } });
+      await prisma.order.delete({ where: { id: cancelledOrder.id } });
+    });
+
+    it('PATCH /api/orders/:id/status → 200 ADMIN cancels PENDING order and restores stock', async () => {
+      const initialInventory = await prisma.inventory.findUnique({
+        where: { productId: product1Id },
+      });
+      const initialStock = initialInventory?.quantity ?? 0;
+
+      const pendingOrder = await prisma.order.create({
+        data: {
+          userId: clientUserId,
+          totalAmount: 99.99,
+          status: 'PENDING',
+          items: {
+            create: {
+              productId: product1Id,
+              quantity: 2,
+              priceAtPurchase: 99.99,
+            },
+          },
+        },
+      });
+
+      await prisma.inventory.update({
+        where: { productId: product1Id },
+        data: { quantity: { decrement: 2 } },
+      });
+
+      const res = await request(server)
+        .patch(`/api/orders/${pendingOrder.id}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'CANCELLED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('CANCELLED');
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: product1Id },
+      });
+      expect(finalInventory?.quantity).toBe(initialStock);
+
+      await prisma.orderItem.deleteMany({ where: { orderId: pendingOrder.id } });
+      await prisma.order.delete({ where: { id: pendingOrder.id } });
+    });
+  });
+
+  describe('Tests critiques d\'intégrité stock (Orders → Inventory)', () => {
+    let testProductId: string;
+    let testProductSku: string;
+
+    beforeEach(async () => {
+      const testProduct = await prisma.product.create({
+        data: {
+          name: 'Test Product for Stock Integrity',
+          description: 'Product for stock integrity tests',
+          price: 49.99,
+          sku: `SKU-STOCK-TEST-${Date.now()}`,
+          isHidden: false,
+          categoryId,
+        },
+      });
+      testProductId = testProduct.id;
+      testProductSku = testProduct.sku;
+
+      await prisma.inventory.create({
+        data: {
+          productId: testProductId,
+          quantity: 5,
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await prisma.orderItem.deleteMany({ where: { productId: testProductId } });
+      await prisma.order.deleteMany({});
+      await prisma.inventory.deleteMany({ where: { productId: testProductId } });
+      await prisma.product.deleteMany({ where: { id: testProductId } });
+    });
+
+    it('POST /api/orders → Vérification décrément stock lors création commande', async () => {
+      const initialStock = (await prisma.inventory.findUnique({ where: { productId: testProductId } }))?.quantity ?? 0;
+      const orderQuantity = 3;
+
+      const res = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: orderQuantity }],
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.id).toBeDefined();
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(finalInventory?.quantity).toBe(initialStock - orderQuantity);
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+    });
+
+    it('POST /api/orders → Rollback si stock insuffisant après validation', async () => {
+      const initialStock = (await prisma.inventory.findUnique({ where: { productId: testProductId } }))?.quantity ?? 0;
+      
+      const firstOrderRes = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: initialStock }],
+        });
+
+      expect(firstOrderRes.status).toBe(201);
+
+      const secondOrderRes = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: 1 }],
+        });
+
+      expect(secondOrderRes.status).toBe(400);
+      expect(secondOrderRes.body.message).toContain('Insufficient stock');
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+    });
+
+    it('POST /api/orders → Test de concurrence : deux commandes simultanées sur stock limité', async () => {
+      const initialStock = (await prisma.inventory.findUnique({ where: { productId: testProductId } }))?.quantity ?? 0;
+      const orderQuantity = 4; // Chaque commande demande 4, mais stock = 5
+
+      const promise1 = request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: orderQuantity }],
+        });
+
+      const promise2 = request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: orderQuantity }],
+        });
+
+      const [res1, res2] = await Promise.all([promise1, promise2]);
+
+      const successCount = [res1.status === 201, res2.status === 201].filter(Boolean).length;
+      expect(successCount).toBeGreaterThanOrEqual(1);
+
+      const failureCount = [res1.status === 400, res2.status === 400].filter(Boolean).length;
+      expect(failureCount).toBeGreaterThanOrEqual(1);
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+      expect(finalInventory?.quantity).toBeLessThanOrEqual(initialStock);
+    });
+
+    it('PATCH /api/orders/:id/cancel → Vérification restauration stock lors annulation', async () => {
+      const initialStock = (await prisma.inventory.findUnique({ where: { productId: testProductId } }))?.quantity ?? 0;
+      const orderQuantity = 2;
+
+      const createRes = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: orderQuantity }],
+        });
+
+      expect(createRes.status).toBe(201);
+      const orderId = createRes.body.id;
+
+      const inventoryAfterOrder = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(inventoryAfterOrder?.quantity).toBe(initialStock - orderQuantity);
+
+      const cancelRes = await request(server)
+        .patch(`/api/orders/${orderId}/cancel`)
+        .set('Authorization', `Bearer ${clientToken}`);
+
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.status).toBe('CANCELLED');
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(finalInventory?.quantity).toBe(initialStock);
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+    });
+
+    it('PATCH /api/orders/:id/status → Vérification restauration stock lors annulation ADMIN', async () => {
+      const initialStock = (await prisma.inventory.findUnique({ where: { productId: testProductId } }))?.quantity ?? 0;
+      const orderQuantity = 2;
+
+      const createRes = await request(server)
+        .post('/api/orders')
+        .set('Authorization', `Bearer ${clientToken}`)
+        .send({
+          items: [{ productId: testProductId, quantity: orderQuantity }],
+        });
+
+      expect(createRes.status).toBe(201);
+      const orderId = createRes.body.id;
+
+      const inventoryAfterOrder = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(inventoryAfterOrder?.quantity).toBe(initialStock - orderQuantity);
+
+      const cancelRes = await request(server)
+        .patch(`/api/orders/${orderId}/status`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ status: 'CANCELLED' });
+
+      expect(cancelRes.status).toBe(200);
+      expect(cancelRes.body.status).toBe('CANCELLED');
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: testProductId },
+      });
+      expect(finalInventory?.quantity).toBe(initialStock);
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
     });
   });
 });

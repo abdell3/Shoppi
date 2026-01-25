@@ -20,6 +20,10 @@ export class OrdersService {
   private readonly TAX_RATE = 0;
 
   constructor(
+    // DETTE TECHNIQUE ACCEPTÉE (Orders uniquement) :
+    // Accès direct à PrismaService JUSTIFIÉ pour orchestrer les transactions Prisma
+    // nécessaires pour garantir l'atomicité entre mise à jour de commande et gestion du stock.
+    // ⚠️ NE PAS APPLIQUER CE MODÈLE AILLEURS sans validation explicite.
     private readonly prisma: PrismaService,
     private readonly orderRepository: OrderRepository,
     private readonly productRepository: ProductRepository,
@@ -83,6 +87,13 @@ export class OrdersService {
             validation.productId,
             -validation.quantity,
             tx,
+          );
+        }
+
+        const updatedInventory = await this.inventoryRepository.findByProductId(validation.productId, tx);
+        if (updatedInventory && updatedInventory.quantity < 0) {
+          throw new BadRequestException(
+            `Insufficient stock for product ${validation.productName}. Stock would become negative (${updatedInventory.quantity}).`,
           );
         }
       }
@@ -169,6 +180,13 @@ export class OrdersService {
             tx,
           );
         }
+
+        const updatedInventory = await this.inventoryRepository.findByProductId(item.productId, tx);
+        if (updatedInventory && updatedInventory.quantity < 0) {
+          throw new BadRequestException(
+            `Stock integrity violation for product ${item.productId}. Quantity became negative (${updatedInventory.quantity}).`,
+          );
+        }
       }
 
       const updatedOrder = await this.orderRepository.updateStatus(
@@ -194,7 +212,6 @@ export class OrdersService {
     userId: string,
     userRole: UserRole,
   ): Promise<OrderResponseDto> {
-    // Seul ADMIN peut modifier le statut (pour l'instant)
     if (userRole !== UserRole.ADMIN) {
       throw new ForbiddenException('Only ADMIN can update order status');
     }
@@ -203,6 +220,55 @@ export class OrdersService {
 
     if (!order) {
       throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+
+    const isPendingToPaid = order.status === OrderStatus.PENDING && status === OrderStatus.PAID;
+    const isPendingToCancelled = order.status === OrderStatus.PENDING && status === OrderStatus.CANCELLED;
+
+    if (!isPendingToPaid && !isPendingToCancelled) {
+      throw new BadRequestException(
+        `Invalid status transition from ${order.status} to ${status}. Only PENDING → PAID and PENDING → CANCELLED are allowed.`,
+      );
+    }
+
+    if (isPendingToCancelled) {
+      return this.prisma.$transaction(async (tx) => {
+        for (const item of order.items) {
+          const inventory = await this.inventoryRepository.findByProductId(item.productId, tx);
+
+          if (!inventory) {
+            await this.inventoryRepository.createForProduct(
+              item.productId,
+              item.quantity,
+              tx,
+            );
+          } else {
+            await this.inventoryRepository.updateQuantityByProductId(
+              item.productId,
+              item.quantity,
+              tx,
+            );
+          }
+
+          const updatedInventory = await this.inventoryRepository.findByProductId(item.productId, tx);
+          if (updatedInventory && updatedInventory.quantity < 0) {
+            throw new BadRequestException(
+              `Stock integrity violation for product ${item.productId}. Quantity became negative (${updatedInventory.quantity}).`,
+            );
+          }
+        }
+
+        await this.orderRepository.updateStatus(id, OrderStatus.CANCELLED, tx);
+
+        const orderWithItems = await this.orderRepository.findByIdWithItems(id, tx);
+        if (!orderWithItems) {
+          throw new NotFoundException(`Order with ID ${id} not found after update`);
+        }
+
+        this.logger.log(`Order ${id} cancelled by admin ${userId}, stock restored`);
+
+        return this.mapToOrderResponse(orderWithItems);
+      });
     }
 
     const updatedOrder = await this.orderRepository.updateStatus(id, status);

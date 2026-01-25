@@ -7,6 +7,10 @@ import { OutOfStockQueryDto } from './dto/out-of-stock-query.dto';
 @Injectable()
 export class InventoryService {
   constructor(
+    // DETTE TECHNIQUE ACCEPTÉE (Inventory uniquement) :
+    // Accès direct à PrismaService JUSTIFIÉ pour orchestrer les transactions Prisma
+    // nécessaires pour garantir l'atomicité entre vérification produit et mise à jour stock.
+    // ⚠️ NE PAS APPLIQUER CE MODÈLE AILLEURS sans validation explicite.
     private readonly prisma: PrismaService,
     private readonly productRepository: ProductRepository,
     private readonly inventoryRepository: InventoryRepository,
@@ -52,12 +56,21 @@ export class InventoryService {
         );
       }
 
-      this.logger.log(`Stock updated for SKU ${sku}. New quantity: ${inventory.quantity}`);
+      const updatedInventory = await this.inventoryRepository.findByProductId(product.id, tx);
+      if (updatedInventory && updatedInventory.quantity < 0) {
+        this.logger.error(
+          `Stock integrity violation for SKU ${sku}. Quantity became negative (${updatedInventory.quantity}).`,
+        );
+        throw new BadRequestException('Insufficient stock - stock would become negative');
+      }
 
+      this.logger.log(`Stock updated for SKU ${sku}. New quantity: ${updatedInventory?.quantity ?? inventory.quantity}`);
+
+      const finalInventory = updatedInventory ?? inventory;
       return {
         sku: product.sku,
-        quantity: inventory.quantity,
-        updatedAt: inventory.updatedAt,
+        quantity: finalInventory.quantity,
+        updatedAt: finalInventory.updatedAt,
       };
     });
   }

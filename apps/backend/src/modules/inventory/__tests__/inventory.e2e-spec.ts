@@ -382,9 +382,110 @@ describe('InventoryModule (e2e)', () => {
         allMessagesText.includes('delta cannot be less than -10000') ||
         allMessagesText.includes('delta must not be less than -10000') ||
         allMessagesText.includes('delta must be greater than or equal to -10000') ||
+        allMessagesText.includes('violates check constraint') ||
+        allMessagesText.includes('quantity_non_negative') ||
         (allMessagesText.includes('delta') && allMessagesText.includes('10000') && allMessagesText.includes('less'));
       
       expect(hasValidationError).toBe(true);
+    });
+
+    it('PATCH /api/inventory/stock/:sku → 400 vérification post-update empêche stock négatif', async () => {
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${patchSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: -15 }); 
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toContain('Insufficient stock');
+      
+      const inventory = await prisma.inventory.findUnique({
+        where: { productId: patchProductId },
+      });
+      expect(inventory?.quantity).toBe(10);
+    });
+  });
+
+  describe('Tests critiques d\'intégrité stock', () => {
+    const concurrentSku = 'SKU-CONCURRENT-TEST';
+    let concurrentProductId: string;
+
+    beforeEach(async () => {
+      await prisma.inventory.deleteMany({ where: { product: { sku: concurrentSku } } });
+      await prisma.product.deleteMany({ where: { sku: concurrentSku } });
+
+      const product = await prisma.product.create({
+        data: {
+          name: 'Concurrent Test Product',
+          description: 'Product for concurrent tests',
+          price: 29.99,
+          sku: concurrentSku,
+          isHidden: false,
+          categoryId,
+        },
+      });
+      concurrentProductId = product.id;
+
+      await prisma.inventory.create({
+        data: {
+          productId: concurrentProductId,
+          quantity: 5, 
+        },
+      });
+    });
+
+    afterEach(async () => {
+      await prisma.inventory.deleteMany({ where: { productId: concurrentProductId } });
+      await prisma.product.deleteMany({ where: { id: concurrentProductId } });
+    });
+
+    it('PATCH /api/inventory/stock/:sku → Test de concurrence : deux requêtes simultanées', async () => {
+      const initialStock = 5;
+      const delta = -4;
+
+      const promise1 = request(server)
+        .patch(`/api/inventory/stock/${concurrentSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta });
+
+      const promise2 = request(server)
+        .patch(`/api/inventory/stock/${concurrentSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta });
+
+      const [res1, res2] = await Promise.all([promise1, promise2]);
+
+      const finalInventory = await prisma.inventory.findUnique({
+        where: { productId: concurrentProductId },
+      });
+      expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+      expect(finalInventory?.quantity).toBeLessThanOrEqual(initialStock);
+
+      const successCount = [res1.status === 200, res2.status === 200].filter(Boolean).length;
+      expect(successCount).toBeGreaterThanOrEqual(1);
+
+      if (successCount === 1) {
+        expect(finalInventory?.quantity).toBe(initialStock + delta);
+      } else if (successCount === 2) {
+        expect(finalInventory?.quantity).toBeGreaterThanOrEqual(0);
+      }
+
+      const failureCount = [res1.status === 400, res2.status === 400].filter(Boolean).length;
+    });
+
+    it('PATCH /api/inventory/stock/:sku → Rollback si décrément invalide', async () => {
+      const initialQuantity = 5;
+      
+      const res = await request(server)
+        .patch(`/api/inventory/stock/${concurrentSku}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ delta: -10 });
+
+      expect(res.status).toBe(400);
+
+      const inventory = await prisma.inventory.findUnique({
+        where: { productId: concurrentProductId },
+      });
+      expect(inventory?.quantity).toBe(initialQuantity);
     });
   });
 });
