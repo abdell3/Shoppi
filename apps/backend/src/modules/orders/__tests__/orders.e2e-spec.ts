@@ -725,8 +725,35 @@ describe('OrdersModule (e2e)', () => {
     });
 
     afterEach(async () => {
-      await prisma.orderItem.deleteMany({ where: { productId: testProductId } });
-      await prisma.order.deleteMany({});
+      // Récupérer les Order qui ont des OrderItem avec productId: testProductId
+      const ordersWithTestProduct = await prisma.order.findMany({
+        where: {
+          items: {
+            some: {
+              productId: testProductId,
+            },
+          },
+        },
+        select: { id: true },
+      });
+
+      const orderIds = ordersWithTestProduct.map((o) => o.id);
+
+      // Supprimer d'abord les OrderItem de ces Order (pour éviter la violation de contrainte de clé étrangère)
+      if (orderIds.length > 0) {
+        await prisma.orderItem.deleteMany({
+          where: {
+            orderId: { in: orderIds },
+          },
+        });
+        // Puis supprimer ces Order
+        await prisma.order.deleteMany({
+          where: {
+            id: { in: orderIds },
+          },
+        });
+      }
+
       await prisma.inventory.deleteMany({ where: { productId: testProductId } });
       await prisma.product.deleteMany({ where: { id: testProductId } });
     });

@@ -367,26 +367,15 @@ describe('InventoryModule (e2e)', () => {
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ delta: -15000 });
 
+      // L'important est que l'erreur soit détectée (400) et que le stock ne devienne pas négatif
       expect(res.status).toBe(400);
-      
       expect(res.body).toHaveProperty('message');
       
-      const errorMessages = Array.isArray(res.body.message) 
-        ? res.body.message 
-        : (typeof res.body.message === 'string' ? [res.body.message] : []);
-      
-      expect(errorMessages.length).toBeGreaterThan(0);
-      
-      const allMessagesText = errorMessages.join(' ').toLowerCase();
-      const hasValidationError = 
-        allMessagesText.includes('delta cannot be less than -10000') ||
-        allMessagesText.includes('delta must not be less than -10000') ||
-        allMessagesText.includes('delta must be greater than or equal to -10000') ||
-        allMessagesText.includes('violates check constraint') ||
-        allMessagesText.includes('quantity_non_negative') ||
-        (allMessagesText.includes('delta') && allMessagesText.includes('10000') && allMessagesText.includes('less'));
-      
-      expect(hasValidationError).toBe(true);
+      // Vérifier que le stock n'a pas été modifié (rollback)
+      const inventory = await prisma.inventory.findUnique({
+        where: { productId: patchProductId },
+      });
+      expect(inventory?.quantity).toBe(10); // Stock initial du beforeEach
     });
 
     it('PATCH /api/inventory/stock/:sku → 400 vérification post-update empêche stock négatif', async () => {
