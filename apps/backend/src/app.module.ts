@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { CartModule } from './modules/cart/cart.module';
 import { UserModule } from './modules/users/users.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { OrdersModule } from './modules/orders/orders.module';
@@ -13,6 +14,7 @@ import { OrdersModule } from './modules/orders/orders.module';
     DatabaseModule,
     AuthModule,
     CatalogModule,
+    CartModule,
     InventoryModule,
     OrdersModule,
     UserModule,

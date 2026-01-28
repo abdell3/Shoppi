@@ -83,13 +83,29 @@ export class ProductRepository extends BaseRepository<Product, Prisma.ProductCre
   async findById(
     id: string,
     tx?: Prisma.TransactionClient,
-  ): Promise<Product | null> {
+  ): Promise<(Product & { category?: { slug: string } | null }) | null> {
     const client = tx ?? this.prisma;
-    return client.product.findUnique({ where: { id } });
+    return client.product.findUnique({
+      where: { id },
+      include: {
+        category: {
+          select: {
+            slug: true,
+          },
+        },
+      },
+    });
   }
 
-  async findAllAdmin(): Promise<Product[]> {
+  async findAllAdmin(): Promise<(Product & { category?: { slug: string } | null })[]> {
     return this.prisma.product.findMany({
+      include: {
+        category: {
+          select: {
+            slug: true,
+          },
+        },
+      },
       orderBy: {
         name: 'asc',
       },

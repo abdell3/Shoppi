@@ -19,6 +19,7 @@ model User {
   createdAt DateTime @default(now())
   isActive  Boolean  @default(true)
   orders    Order[]
+  carts     Cart[]
 }
 
 model Order {
@@ -51,6 +52,7 @@ model Product {
   categoryId  String
   inventory   Inventory?
   orderItems  OrderItem[]
+  cartItems   CartItem[]
   category    Category    @relation(fields: [categoryId], references: [id])
   tags        Tag[]       @relation("ProductToTag")
 }
@@ -76,6 +78,46 @@ model Tag {
   name        String    @unique
   description String?
   products    Product[] @relation("ProductToTag")
+}
+
+enum CartStatus {
+  ACTIVE
+  CONVERTED
+  EXPIRED
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String?
+  guestId   String?
+  status    CartStatus @default(ACTIVE)
+  version   Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  expiresAt DateTime?
+
+  user  User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@index([userId])
+  @@index([guestId])
+  @@index([status])
+  @@index([updatedAt])
+  @@index([userId, status])
+  @@index([guestId, status])
+  @@index([status, updatedAt])
+}
+
+model CartItem {
+  id        String @id @default(uuid())
+  cartId    String
+  productId String
+  quantity  Int
+
+  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
 }
 
 enum UserRole {

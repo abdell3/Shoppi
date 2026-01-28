@@ -34,7 +34,7 @@ export class OrdersService {
   async createOrder(userId: string, createOrderDto: CreateOrderDto): Promise<OrderResponseDto> {
     this.logger.log(`Creating order for user ${userId} with ${createOrderDto.items.length} items`);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.executeTransaction(async (tx) => {
       const productValidations = await Promise.all(
         createOrderDto.items.map(async (item) => {
           const product = await this.productRepository.findById(item.productId, tx);
@@ -147,7 +147,7 @@ export class OrdersService {
   async cancelOrder(id: string, userId: string, userRole: UserRole): Promise<OrderResponseDto> {
     this.logger.log(`Cancelling order ${id} by user ${userId}`);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.executeTransaction(async (tx) => {
       const order = await this.orderRepository.findByIdWithItems(id, tx);
 
       if (!order) {
@@ -156,6 +156,11 @@ export class OrdersService {
 
       if (userRole !== UserRole.ADMIN && order.userId !== userId) {
         throw new ForbiddenException('You do not have access to this order');
+      }
+
+      if (order.status === OrderStatus.CANCELLED) {
+        this.logger.log(`Order ${id} is already CANCELLED, returning current state (idempotent)`);
+        return this.mapToOrderResponse(order);
       }
 
       if (order.status !== OrderStatus.PENDING) {
@@ -216,23 +221,28 @@ export class OrdersService {
       throw new ForbiddenException('Only ADMIN can update order status');
     }
 
-    const order = await this.orderRepository.findByIdWithItems(id);
+    return this.prisma.executeTransaction(async (tx) => {
+      const order = await this.orderRepository.findByIdWithItems(id, tx);
 
-    if (!order) {
-      throw new NotFoundException(`Order with ID ${id} not found`);
-    }
+      if (!order) {
+        throw new NotFoundException(`Order with ID ${id} not found`);
+      }
 
-    const isPendingToPaid = order.status === OrderStatus.PENDING && status === OrderStatus.PAID;
-    const isPendingToCancelled = order.status === OrderStatus.PENDING && status === OrderStatus.CANCELLED;
+      if (order.status === status) {
+        this.logger.log(`Order ${id} already has status ${status}, returning current state (idempotent)`);
+        return this.mapToOrderResponse(order);
+      }
 
-    if (!isPendingToPaid && !isPendingToCancelled) {
-      throw new BadRequestException(
-        `Invalid status transition from ${order.status} to ${status}. Only PENDING → PAID and PENDING → CANCELLED are allowed.`,
-      );
-    }
+      const isPendingToPaid = order.status === OrderStatus.PENDING && status === OrderStatus.PAID;
+      const isPendingToCancelled = order.status === OrderStatus.PENDING && status === OrderStatus.CANCELLED;
 
-    if (isPendingToCancelled) {
-      return this.prisma.$transaction(async (tx) => {
+      if (!isPendingToPaid && !isPendingToCancelled) {
+        throw new BadRequestException(
+          `Invalid status transition from ${order.status} to ${status}. Only PENDING → PAID and PENDING → CANCELLED are allowed.`,
+        );
+      }
+
+      if (isPendingToCancelled) {
         for (const item of order.items) {
           const inventory = await this.inventoryRepository.findByProductId(item.productId, tx);
 
@@ -268,19 +278,19 @@ export class OrdersService {
         this.logger.log(`Order ${id} cancelled by admin ${userId}, stock restored`);
 
         return this.mapToOrderResponse(orderWithItems);
-      });
-    }
+      }
 
-    const updatedOrder = await this.orderRepository.updateStatus(id, status);
+      await this.orderRepository.updateStatus(id, status, tx);
 
-    const orderWithItems = await this.orderRepository.findByIdWithItems(id);
-    if (!orderWithItems) {
-      throw new NotFoundException(`Order with ID ${id} not found after update`);
-    }
+      const orderWithItems = await this.orderRepository.findByIdWithItems(id, tx);
+      if (!orderWithItems) {
+        throw new NotFoundException(`Order with ID ${id} not found after update`);
+      }
 
-    this.logger.log(`Order ${id} status updated to ${status} by admin ${userId}`);
+      this.logger.log(`Order ${id} status updated to ${status} by admin ${userId}`);
 
-    return this.mapToOrderResponse(orderWithItems);
+      return this.mapToOrderResponse(orderWithItems);
+    });
   }
 
   private mapToOrderResponse(order: OrderWithItems): OrderResponseDto {

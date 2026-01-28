@@ -36,12 +36,30 @@ export class AdminProductsService {
       },
     });
 
-    return ProductEntity.fromPersistence(product);
+    return ProductEntity.fromPersistence({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      categoryId: product.categoryId,
+      isHidden: product.isHidden,
+      categorySlug: category.slug,
+    });
   }
 
   async findAll(): Promise<ProductEntity[]> {
     const products = await this.productRepository.findAllAdmin();
-    return ProductEntity.fromPersistenceArray(products);
+    return products.map((product) =>
+      ProductEntity.fromPersistence({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        categoryId: product.categoryId,
+        isHidden: product.isHidden,
+        categorySlug: product.category?.slug ?? null,
+      }),
+    );
   }
 
   async findOne(id: string): Promise<ProductEntity> {
@@ -51,7 +69,15 @@ export class AdminProductsService {
       throw new NotFoundException(`Product with ID ${id} not found`);
     }
 
-    return ProductEntity.fromPersistence(product);
+    return ProductEntity.fromPersistence({
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      categoryId: product.categoryId,
+      isHidden: product.isHidden,
+      categorySlug: product.category?.slug ?? null,
+    });
   }
 
   async update(id: string, updateProductDto: UpdateProductDto): Promise<ProductEntity> {
@@ -94,7 +120,21 @@ export class AdminProductsService {
     }
 
     const updatedProduct = await this.productRepository.update(id, updateData);
-    return ProductEntity.fromPersistence(updatedProduct);
+    
+    const productWithCategory = await this.productRepository.findById(id);
+    if (!productWithCategory) {
+      throw new NotFoundException(`Product with ID ${id} not found after update`);
+    }
+
+    return ProductEntity.fromPersistence({
+      id: productWithCategory.id,
+      name: productWithCategory.name,
+      description: productWithCategory.description,
+      price: productWithCategory.price,
+      categoryId: productWithCategory.categoryId,
+      isHidden: productWithCategory.isHidden,
+      categorySlug: productWithCategory.category?.slug ?? null,
+    });
   }
 
   async remove(id: string): Promise<ProductEntity> {
@@ -105,6 +145,20 @@ export class AdminProductsService {
     }
 
     const softDeletedProduct = await this.productRepository.softDelete(id);
-    return ProductEntity.fromPersistence(softDeletedProduct);
+    
+    const productWithCategory = await this.productRepository.findById(id);
+    if (!productWithCategory) {
+      throw new NotFoundException(`Product with ID ${id} not found after soft delete`);
+    }
+
+    return ProductEntity.fromPersistence({
+      id: productWithCategory.id,
+      name: productWithCategory.name,
+      description: productWithCategory.description,
+      price: productWithCategory.price,
+      categoryId: productWithCategory.categoryId,
+      isHidden: productWithCategory.isHidden,
+      categorySlug: productWithCategory.category?.slug ?? null,
+    });
   }
 }

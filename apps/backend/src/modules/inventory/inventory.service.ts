@@ -24,7 +24,7 @@ export class InventoryService {
   }> {
     this.logger.log(`Updating stock for SKU ${sku} with delta ${delta}`);
 
-    return this.prisma.$transaction(async (tx) => {
+    return this.prisma.executeTransaction(async (tx) => {
       const product = await this.productRepository.findBySku(sku, tx);
       if (!product) {
         this.logger.warn(`Product with SKU ${sku} not found`);
