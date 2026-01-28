@@ -9,5 +9,6 @@ import { AuthModule } from '../auth/auth.module';
   imports: [forwardRef(() => CatalogModule), AuthModule],
   controllers: [InventoryController],
   providers: [InventoryService, InventoryRepository, Logger],
+  exports: [InventoryRepository],
 })
 export class InventoryModule {}

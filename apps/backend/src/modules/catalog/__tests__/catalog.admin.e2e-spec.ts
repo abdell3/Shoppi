@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { execSync } from 'child_process';
 import { resolve } from 'path';
@@ -38,6 +38,13 @@ describe('CatalogModule - Admin (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.setGlobalPrefix('api');
+    app.useGlobalPipes(
+      new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      }),
+    );
 
     prisma = moduleFixture.get<PrismaService>(PrismaService);
     try {
@@ -117,18 +124,41 @@ describe('CatalogModule - Admin (e2e)', () => {
       throw new Error(`Client login failed: ${clientLoginRes.status} - ${JSON.stringify(clientLoginRes.body)}`);
     }
     clientToken = clientLoginRes.body.accessToken;
+
+    const testProduct = await prisma.product.create({
+      data: {
+        name: 'Test Product',
+        description: 'Test Description',
+        price: 99.99,
+        sku: `TEST-PRODUCT-${Date.now()}`,
+        isHidden: false,
+        categoryId: categoryId,
+      },
+    });
+    productId = testProduct.id;
   });
 
   afterAll(async () => {
     try {
-      await prisma.product.deleteMany({});
-      await prisma.category.deleteMany({});
-      await prisma.user.deleteMany({});
-      await prisma.$disconnect();
+      if (prisma) {
+        await prisma.product.deleteMany({});
+        await prisma.category.deleteMany({});
+        await prisma.user.deleteMany({});
+        await prisma.$disconnect();
+      }
     } catch (error) {
       console.warn('⚠️  Could not clean database:', error);
     }
-    await app.close();
+    if (app) await app.close();
+  });
+
+  beforeEach(async () => {
+    if (productId) {
+      await prisma.product.update({
+        where: { id: productId },
+        data: { isHidden: false, name: 'Test Product' },
+      });
+    }
   });
 
   describe('Products - Sécurité', () => {
@@ -156,11 +186,12 @@ describe('CatalogModule - Admin (e2e)', () => {
     });
 
     it('POST /api/catalog/products → 200 avec token ADMIN', async () => {
+      const uniqueName = `Test Product ${Date.now()}`;
       const res = await request(server)
         .post('/api/catalog/products')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          name: 'Test Product',
+          name: uniqueName,
           description: 'Test Description',
           price: 99.99,
           categoryId: categoryId,
@@ -168,10 +199,11 @@ describe('CatalogModule - Admin (e2e)', () => {
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
-      expect(res.body).toHaveProperty('name', 'Test Product');
+      expect(res.body).toHaveProperty('name', uniqueName);
       expect(res.body).toHaveProperty('price', 99.99);
       expect(res.body).toHaveProperty('isActive', true);
-      productId = res.body.id;
+
+      await prisma.product.delete({ where: { id: res.body.id } });
     });
   });
 
@@ -206,6 +238,15 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('GET /api/catalog/products/admin (Admin only)', () => {
+    let testProductIds: string[] = [];
+
+    afterEach(async () => {
+      if (testProductIds.length > 0) {
+        await prisma.product.deleteMany({ where: { id: { in: testProductIds } } });
+        testProductIds = [];
+      }
+    });
+
     it('GET /api/catalog/products/admin → 401 sans token', async () => {
       const res = await request(server).get('/api/catalog/products/admin');
       expect(res.status).toBe(401);
@@ -229,16 +270,17 @@ describe('CatalogModule - Admin (e2e)', () => {
         },
       });
 
-      await prisma.product.create({
+      const product = await prisma.product.create({
         data: {
           name: 'Hidden Product Admin',
           description: 'Hidden',
           price: 199.99,
-          sku: 'HIDDEN-ADMIN',
+          sku: `HIDDEN-ADMIN-${Date.now()}`,
           isHidden: true,
           categoryId: category.id,
         },
       });
+      testProductIds.push(product.id);
 
       const res = await request(server)
         .get('/api/catalog/products/admin')
@@ -247,13 +289,22 @@ describe('CatalogModule - Admin (e2e)', () => {
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
       
-      const hiddenProduct = res.body.find((p: any) => p.name === 'Hidden Product Admin');
+      const hiddenProduct = res.body.find((p: any) => p.id === product.id);
       expect(hiddenProduct).toBeDefined();
       expect(hiddenProduct.isActive).toBe(false);
     });
   });
 
   describe('GET /api/catalog/products/:id (Admin only)', () => {
+    beforeEach(async () => {
+      if (productId) {
+        await prisma.product.update({
+          where: { id: productId },
+          data: { isHidden: false },
+        });
+      }
+    });
+
     it('GET /api/catalog/products/:id → 404 si produit inexistant', async () => {
       const res = await request(server)
         .get('/api/catalog/products/00000000-0000-0000-0000-000000000000')
@@ -274,6 +325,24 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('PATCH /api/catalog/products/:id (Admin only)', () => {
+    beforeEach(async () => {
+      if (productId) {
+        await prisma.product.update({
+          where: { id: productId },
+          data: { isHidden: false, name: 'Test Product' },
+        });
+      }
+    });
+
+    afterEach(async () => {
+      if (productId) {
+        await prisma.product.update({
+          where: { id: productId },
+          data: { isHidden: false, name: 'Test Product' },
+        });
+      }
+    });
+
     it('PATCH /api/catalog/products/:id → 404 si produit inexistant', async () => {
       const res = await request(server)
         .patch('/api/catalog/products/00000000-0000-0000-0000-000000000000')
@@ -314,6 +383,15 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('DELETE /api/catalog/products/:id (Admin only)', () => {
+    let testProductIds: string[] = [];
+
+    afterEach(async () => {
+      if (testProductIds.length > 0) {
+        await prisma.product.deleteMany({ where: { id: { in: testProductIds } } });
+        testProductIds = [];
+      }
+    });
+
     it('DELETE /api/catalog/products/:id → 404 si produit inexistant', async () => {
       const res = await request(server)
         .delete('/api/catalog/products/00000000-0000-0000-0000-000000000000')
@@ -343,6 +421,7 @@ describe('CatalogModule - Admin (e2e)', () => {
           categoryId: category.id,
         },
       });
+      testProductIds.push(product.id);
 
       const res = await request(server)
         .delete(`/api/catalog/products/${product.id}`)
@@ -382,20 +461,34 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('POST /api/catalog/categories (Admin only)', () => {
+    let testCategoryIds: string[] = [];
+
+    afterEach(async () => {
+      if (testCategoryIds.length > 0) {
+        await prisma.category.deleteMany({ where: { id: { in: testCategoryIds } } });
+        testCategoryIds = [];
+      }
+    });
+
     it('POST /api/catalog/categories → 201 crée une catégorie', async () => {
+      const uniqueSlug = `new-category-${Date.now()}`;
       const res = await request(server)
         .post('/api/catalog/categories')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           name: 'New Category',
-          slug: 'new-category',
+          slug: uniqueSlug,
         });
 
       expect(res.status).toBe(201);
       expect(res.body).toHaveProperty('id');
       expect(res.body).toHaveProperty('name', 'New Category');
-      expect(res.body).toHaveProperty('slug', 'new-category');
+      expect(res.body).toHaveProperty('slug', uniqueSlug);
       expect(res.body).toHaveProperty('isActive', true);
+      
+      if (res.body.id) {
+        testCategoryIds.push(res.body.id);
+      }
     });
 
     it('POST /api/catalog/categories → 409 si slug existe déjà', async () => {
@@ -423,14 +516,25 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('GET /api/catalog/categories/admin (Admin only)', () => {
+    let testCategoryId: string;
+
+    afterEach(async () => {
+      if (testCategoryId) {
+        await prisma.category.deleteMany({ where: { id: testCategoryId } });
+        testCategoryId = '';
+      }
+    });
+
     it('GET /api/catalog/categories/admin → 200 retourne toutes les catégories (y compris isHidden)', async () => {
-      await prisma.category.create({
+      const uniqueSlug = `hidden-category-admin-${Date.now()}`;
+      const category = await prisma.category.create({
         data: {
           name: 'Hidden Category Admin',
-          slug: 'hidden-category-admin',
+          slug: uniqueSlug,
           isHidden: true,
         },
       });
+      testCategoryId = category.id;
 
       const res = await request(server)
         .get('/api/catalog/categories/admin')
@@ -440,7 +544,7 @@ describe('CatalogModule - Admin (e2e)', () => {
       expect(Array.isArray(res.body)).toBe(true);
       
       const hiddenCategory = res.body.find(
-        (c: any) => c.slug === 'hidden-category-admin'
+        (c: any) => c.id === testCategoryId
       );
       expect(hiddenCategory).toBeDefined();
       expect(hiddenCategory.isActive).toBe(false);
@@ -448,6 +552,15 @@ describe('CatalogModule - Admin (e2e)', () => {
   });
 
   describe('DELETE /api/catalog/categories/:id (Admin only)', () => {
+    let testCategoryId: string;
+
+    afterEach(async () => {
+      if (testCategoryId) {
+        await prisma.category.deleteMany({ where: { id: testCategoryId } });
+        testCategoryId = '';
+      }
+    });
+
     it('DELETE /api/catalog/categories/:id → 200 soft delete (isHidden = true)', async () => {
       const category = await prisma.category.create({
         data: {
@@ -456,6 +569,7 @@ describe('CatalogModule - Admin (e2e)', () => {
           isHidden: false,
         },
       });
+      testCategoryId = category.id;
 
       const res = await request(server)
         .delete(`/api/catalog/categories/${category.id}`)
